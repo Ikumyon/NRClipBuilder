@@ -72,11 +72,12 @@ from PySide6.QtWidgets import (
 
 try:
     from PySide6.QtWebEngineWidgets import QWebEngineView
-    from PySide6.QtWebEngineCore import QWebEngineSettings
+    from PySide6.QtWebEngineCore import QWebEngineSettings, QWebEnginePage
     HAS_WEBENGINE = True
 except Exception:
     QWebEngineView = None
     QWebEngineSettings = None
+    QWebEnginePage = None
     HAS_WEBENGINE = False
 
 
@@ -380,20 +381,30 @@ def make_leaflet_html(geojson: dict[str, Any], title: str = APP_TITLE) -> str:
     gj = json.dumps(geojson, ensure_ascii=False, separators=(",", ":"))
     feature_count = len(geojson.get("features", []))
     return f"""<!doctype html>
-<html lang=\"ja\">
+<html lang="ja">
 <head>
-<meta charset=\"utf-8\">
-<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{html.escape(title)}</title>
-<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
   html, body, #map {{ height: 100%; margin: 0; }}
   .info {{ background: white; padding: 8px 10px; border-radius: 4px; box-shadow: 0 1px 5px rgba(0,0,0,.35); font: 13px/1.4 sans-serif; }}
+  .history-label {{
+    background-color: rgba(255, 255, 255, 0.85);
+    border: 1px solid #3388ff;
+    border-radius: 3px;
+    padding: 1px 3px;
+    font-size: 10px;
+    font-weight: bold;
+    color: #3388ff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  }}
 </style>
 </head>
 <body>
-<div id=\"map\"></div>
-<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>
+<div id="map"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const data = {gj};
 const map = L.map('map', {{ zoomControl: true }});
@@ -404,28 +415,259 @@ const osm = L.tileLayer('https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', 
   attribution: '&copy; OpenStreetMap contributors', maxZoom: 19
 }});
 gsiStd.addTo(map);
-L.control.layers({{'国土地理院地図': gsiStd, 'OpenStreetMap': osm}}, null, {{collapsed: false}}).addTo(map);
+
+// History layer group and controls
+const historyLayer = L.layerGroup().addTo(map);
+L.control.layers(
+  {{'国土地理院地図': gsiStd, 'OpenStreetMap': osm}},
+  {{'過去の出力履歴': historyLayer}},
+  {{collapsed: false}}
+).addTo(map);
 
 function propHtml(props) {{
   const keys = Object.keys(props || {{}}).slice(0, 30);
   if (!keys.length) return '(属性なし)';
-  return '<table>' + keys.map(k => '<tr><th style=\"text-align:left;padding-right:8px\">' + escapeHtml(k) + '</th><td>' + escapeHtml(String(props[k] ?? '')) + '</td></tr>').join('') + '</table>';
+  return '<table>' + keys.map(k => '<tr><th style="text-align:left;padding-right:8px">' + escapeHtml(k) + '</th><td>' + escapeHtml(String(props[k] ?? '')) + '</td></tr>').join('') + '</table>';
 }}
-function escapeHtml(s) {{ return s.replace(/[&<>\"']/g, m => ({{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}}[m])); }}
+function escapeHtml(s) {{ return s.replace(/[&<>"']/g, m => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[m])); }}
 
 const layer = L.geoJSON(data, {{
   style: function(feature) {{ return {{ color: '#d6336c', weight: 5, opacity: 0.9 }}; }},
   pointToLayer: function(feature, latlng) {{ return L.circleMarker(latlng, {{ radius: 5, color: '#d6336c', weight: 2, fillOpacity: 0.8 }}); }},
   onEachFeature: function(feature, layer) {{ layer.bindPopup(propHtml(feature.properties)); }}
 }}).addTo(map);
+
 const b = layer.getBounds();
 if (b.isValid()) map.fitBounds(b.pad(0.15)); else map.setView([44.8, 142.5], 9);
 const info = L.control({{position:'bottomleft'}});
 info.onAdd = function() {{ const div = L.DomUtil.create('div','info'); div.innerHTML = '<b>{html.escape(title)}</b><br>{feature_count} features'; return div; }};
 info.addTo(map);
+
+// --- Active Selection Bounding Box Logic ---
+let selectMode = false;
+let activeRect = null;
+let dragStartLatLng = null;
+let activeHandles = [];
+
+const SelectControl = L.Control.extend({{
+  options: {{ position: 'topleft' }},
+  onAdd: function(map) {{
+    const btn = L.DomUtil.create('button', 'leaflet-bar');
+    btn.innerHTML = '範囲選択';
+    btn.style.backgroundColor = 'white';
+    btn.style.border = '2px solid rgba(0,0,0,0.2)';
+    btn.style.borderRadius = '4px';
+    btn.style.padding = '6px 10px';
+    btn.style.cursor = 'pointer';
+    btn.style.fontWeight = 'bold';
+    
+    L.DomEvent.on(btn, 'click', function(e) {{
+      L.DomEvent.stopPropagation(e);
+      selectMode = !selectMode;
+      if (selectMode) {{
+        btn.style.backgroundColor = '#ffc9c9';
+        btn.innerHTML = '範囲選択中 (ドラッグして囲む)';
+        map.dragging.disable();
+      }} else {{
+        btn.style.backgroundColor = 'white';
+        btn.innerHTML = '範囲選択';
+        map.dragging.enable();
+      }}
+    }});
+    return btn;
+  }}
+}});
+new SelectControl().addTo(map);
+
+function clearHandles() {{
+  activeHandles.forEach(h => map.removeLayer(h.marker));
+  activeHandles = [];
+}}
+
+function createHandles() {{
+  clearHandles();
+  if (!activeRect) return;
+
+  const bounds = activeRect.getBounds();
+  const corners = {{
+    nw: bounds.getNorthWest(),
+    ne: bounds.getNorthEast(),
+    sw: bounds.getSouthWest(),
+    se: bounds.getSouthEast()
+  }};
+
+  const handleIcon = L.divIcon({{
+    className: 'bbox-handle-icon',
+    html: '<div style="width:10px;height:10px;background-color:#ff3333;border:1px solid white;border-radius:50%;cursor:move;box-shadow:0 1px 3px rgba(0,0,0,0.4)"></div>',
+    iconSize: [10, 10],
+    iconAnchor: [5, 5]
+  }});
+
+  for (let key in corners) {{
+    const marker = L.marker(corners[key], {{
+      draggable: true,
+      icon: handleIcon
+    }}).addTo(map);
+
+    marker.on('drag', function(e) {{
+      updateBoundsFromHandle(key, marker.getLatLng());
+    }});
+
+    marker.on('dragend', function() {{
+      notifyBounds();
+    }});
+
+    activeHandles.push({{ key: key, marker: marker }});
+  }}
+}}
+
+function updateBoundsFromHandle(key, latlng) {{
+  if (!activeRect) return;
+  const bounds = activeRect.getBounds();
+  let west = bounds.getWest();
+  let south = bounds.getSouth();
+  let east = bounds.getEast();
+  let north = bounds.getNorth();
+
+  if (key === 'nw') {{
+    west = latlng.lng;
+    north = latlng.lat;
+  }} else if (key === 'ne') {{
+    east = latlng.lng;
+    north = latlng.lat;
+  }} else if (key === 'sw') {{
+    west = latlng.lng;
+    south = latlng.lat;
+  }} else if (key === 'se') {{
+    east = latlng.lng;
+    south = latlng.lat;
+  }}
+
+  const newBounds = L.latLngBounds([south, west], [north, east]);
+  activeRect.setBounds(newBounds);
+
+  const newCorners = {{
+    nw: newBounds.getNorthWest(),
+    ne: newBounds.getNorthEast(),
+    sw: newBounds.getSouthWest(),
+    se: newBounds.getSouthEast()
+  }};
+
+  activeHandles.forEach(h => {{
+    if (h.key !== key) {{
+      h.marker.setLatLng(newCorners[h.key]);
+    }}
+  }});
+}}
+
+function notifyBounds() {{
+  if (!activeRect) return;
+  const bounds = activeRect.getBounds();
+  const west = bounds.getWest();
+  const south = bounds.getSouth();
+  const east = bounds.getEast();
+  const north = bounds.getNorth();
+  document.title = "BBOX:" + west + "," + south + "," + east + "," + north;
+}}
+
+map.on('mousedown', function(e) {{
+  if (!selectMode) return;
+  dragStartLatLng = e.latlng;
+  if (activeRect) {{
+    map.removeLayer(activeRect);
+  }}
+  clearHandles();
+  activeRect = L.rectangle([dragStartLatLng, dragStartLatLng], {{
+    color: '#ff3333',
+    weight: 2,
+    fillOpacity: 0.1
+  }}).addTo(map);
+}});
+
+map.on('mousemove', function(e) {{
+  if (!selectMode || !dragStartLatLng || !activeRect) return;
+  const bounds = L.latLngBounds(dragStartLatLng, e.latlng);
+  activeRect.setBounds(bounds);
+}});
+
+map.on('mouseup', function(e) {{
+  if (!selectMode || !dragStartLatLng || !activeRect) return;
+  const bounds = activeRect.getBounds();
+  const west = bounds.getWest();
+  const south = bounds.getSouth();
+  const east = bounds.getEast();
+  const north = bounds.getNorth();
+  
+  createHandles();
+  notifyBounds();
+  
+  dragStartLatLng = null;
+  selectMode = false;
+  
+  const btns = document.getElementsByTagName('button');
+  for (let btn of btns) {{
+    if (btn.classList.contains('leaflet-bar')) {{
+      btn.style.backgroundColor = 'white';
+      btn.innerHTML = '範囲選択';
+    }}
+  }}
+  map.dragging.enable();
+}});
+
+// --- Python-callable APIs ---
+window.setActiveBounds = function(west, south, east, north) {{
+  if (activeRect) {{
+    map.removeLayer(activeRect);
+  }}
+  const bounds = L.latLngBounds([south, west], [north, east]);
+  activeRect = L.rectangle(bounds, {{
+    color: '#ff3333',
+    weight: 2,
+    fillOpacity: 0.1
+  }}).addTo(map);
+  createHandles();
+}};
+
+window.clearActiveBounds = function() {{
+  if (activeRect) {{
+    map.removeLayer(activeRect);
+    activeRect = null;
+  }}
+  clearHandles();
+}};
+
+window.addHistoryBounds = function(west, south, east, north, name) {{
+  const bounds = L.latLngBounds([south, west], [north, east]);
+  const rect = L.rectangle(bounds, {{
+    color: '#3388ff',
+    weight: 2,
+    fillOpacity: 0.05,
+    interactive: true
+  }}).addTo(historyLayer);
+
+  rect.bindTooltip(name, {{
+    permanent: true,
+    direction: 'top',
+    className: 'history-label'
+  }});
+
+  rect.on('click', function(e) {{
+    L.DomEvent.stopPropagation(e);
+    document.title = "SELECT_HISTORY:" + name + "," + west + "," + south + "," + east + "," + north;
+  }});
+}};
+
+window.clearHistoryBounds = function() {{
+  historyLayer.clearLayers();
+}};
 </script>
 </body>
 </html>"""
+
+
+class CustomWebPage(QWebEnginePage):
+    def javaScriptConsoleMessage(self, level: int, message: str, lineNumber: int, sourceID: str) -> None:
+        print(f"JS Console message: {message} at line {lineNumber} (source: {sourceID})")
 
 
 class MapWidget(QWidget):
@@ -435,6 +677,8 @@ class MapWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         if HAS_WEBENGINE:
             self.web = QWebEngineView()
+            self.page = CustomWebPage(self.web)
+            self.web.setPage(self.page)
             if QWebEngineSettings is not None:
                 settings = self.web.settings()
                 settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
@@ -497,6 +741,30 @@ class MainWindow(QMainWindow):
 
         # イベントの接続
         self.apply_btn.clicked.connect(self.apply_filter)
+
+        # BBox 関連の初期化とシグナル接続
+        self.selected_bbox = None
+        self.history_file = Path(__file__).parent / "bbox_history.json"
+        self.history_data = []
+
+        if HAS_WEBENGINE:
+            self.map_widget.web.titleChanged.connect(self.on_title_changed)
+            self.map_widget.web.loadFinished.connect(self.on_map_load_finished)
+        self.clear_bbox_btn.clicked.connect(self.clear_bbox)
+        self.use_bbox_check.stateChanged.connect(self.on_use_bbox_changed)
+
+        self.min_lon_edit.editingFinished.connect(self.on_coordinate_edited)
+        self.min_lat_edit.editingFinished.connect(self.on_coordinate_edited)
+        self.max_lon_edit.editingFinished.connect(self.on_coordinate_edited)
+        self.max_lat_edit.editingFinished.connect(self.on_coordinate_edited)
+
+        # 履歴テーブルの初期設定
+        self.history_table.setColumnCount(6)
+        self.history_table.setHorizontalHeaderLabels(["名前", "最小経度", "最小緯度", "最大経度", "最大緯度", "出力日時"])
+        self.history_table.itemSelectionChanged.connect(self.on_history_selected)
+        self.delete_history_btn.clicked.connect(self.delete_history)
+
+        self.load_history_from_file()
 
         # メニューアクション of 接続
         self.action_open.triggered.connect(self.open_file)
@@ -585,6 +853,199 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.critical(self, "フィルターエラー", f"{exc}\n\n{traceback.format_exc()}")
 
+    def feature_intersects_bbox(self, feat: dict, bbox: tuple[float, float, float, float]) -> bool:
+        min_lon, min_lat, max_lon, max_lat = bbox
+        geom = feat.get("geometry") or {}
+        for line in iter_lines_from_geometry(geom):
+            for pt in line:
+                lon, lat = pt[0], pt[1]
+                if min_lon <= lon <= max_lon and min_lat <= lat <= max_lat:
+                    return True
+        return False
+
+    def on_use_bbox_changed(self, state: int) -> None:
+        if self.use_bbox_check.isChecked():
+            self.on_coordinate_edited()
+        else:
+            if HAS_WEBENGINE:
+                self.map_widget.web.page().runJavaScript("window.clearActiveBounds();")
+
+    def on_map_load_finished(self, ok: bool) -> None:
+        if ok:
+            self.update_map_history_bboxes()
+            self.update_map_active_bbox()
+
+    def on_coordinate_edited(self) -> None:
+        try:
+            w = float(self.min_lon_edit.text())
+            s = float(self.min_lat_edit.text())
+            e = float(self.max_lon_edit.text())
+            n = float(self.max_lat_edit.text())
+            self.selected_bbox = (w, s, e, n)
+            self.use_bbox_check.setChecked(True)
+            self.update_map_active_bbox()
+        except ValueError:
+            pass
+
+    def update_map_active_bbox(self) -> None:
+        if self.selected_bbox:
+            w, s, e, n = self.selected_bbox
+            if HAS_WEBENGINE:
+                self.map_widget.web.page().runJavaScript(f"window.setActiveBounds({w}, {s}, {e}, {n});")
+        else:
+            if HAS_WEBENGINE:
+                self.map_widget.web.page().runJavaScript("window.clearActiveBounds();")
+
+    def update_map_history_bboxes(self) -> None:
+        if not HAS_WEBENGINE:
+            return
+        page = self.map_widget.web.page()
+        page.runJavaScript("window.clearHistoryBounds();")
+        for item in self.history_data:
+            bbox = item.get("bbox")
+            name = item.get("name", "")
+            if bbox and len(bbox) == 4:
+                w, s, e, n = bbox
+                name_esc = name.replace("'", "\\'")
+                page.runJavaScript(f"window.addHistoryBounds({w}, {s}, {e}, {n}, '{name_esc}');")
+
+    def on_title_changed(self, title: str) -> None:
+        if title.startswith("BBOX:"):
+            parts = title[5:].split(",")
+            if len(parts) == 4:
+                try:
+                    w, s, e, n = map(float, parts)
+                    self.selected_bbox = (w, s, e, n)
+                    self.min_lon_edit.setText(f"{w:.7f}")
+                    self.min_lat_edit.setText(f"{s:.7f}")
+                    self.max_lon_edit.setText(f"{e:.7f}")
+                    self.max_lat_edit.setText(f"{n:.7f}")
+                    self.use_bbox_check.setChecked(True)
+                except ValueError:
+                    pass
+        elif title.startswith("SELECT_HISTORY:"):
+            parts = title[15:].split(",")
+            if len(parts) == 5:
+                name = parts[0]
+                try:
+                    w, s, e, n = map(float, parts[1:])
+                    self.selected_bbox = (w, s, e, n)
+                    self.min_lon_edit.setText(f"{w:.7f}")
+                    self.min_lat_edit.setText(f"{s:.7f}")
+                    self.max_lon_edit.setText(f"{e:.7f}")
+                    self.max_lat_edit.setText(f"{n:.7f}")
+                    self.use_bbox_check.setChecked(True)
+                    self.update_map_active_bbox()
+                    self.select_history_row_by_name(name)
+                except ValueError:
+                    pass
+
+    def select_history_row_by_name(self, name: str) -> None:
+        for r in range(self.history_table.rowCount()):
+            item = self.history_table.item(r, 0)
+            if item and item.text() == name:
+                self.history_table.selectRow(r)
+                break
+
+    def clear_bbox(self) -> None:
+        self.selected_bbox = None
+        self.min_lon_edit.clear()
+        self.min_lat_edit.clear()
+        self.max_lon_edit.clear()
+        self.max_lat_edit.clear()
+        self.use_bbox_check.setChecked(False)
+        if HAS_WEBENGINE:
+            self.map_widget.web.page().runJavaScript("window.clearActiveBounds();")
+
+    def load_history_from_file(self) -> None:
+        self.history_data = []
+        if self.history_file.exists():
+            try:
+                self.history_data = json.loads(self.history_file.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        self.refresh_history_table()
+
+    def save_history_to_file(self) -> None:
+        try:
+            self.history_file.write_text(json.dumps(self.history_data, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
+    def refresh_history_table(self) -> None:
+        self.history_table.setRowCount(0)
+        for item in self.history_data:
+            row = self.history_table.rowCount()
+            self.history_table.insertRow(row)
+            bbox = item.get("bbox", [0, 0, 0, 0])
+            w, s, e, n = bbox
+            self.history_table.setItem(row, 0, QTableWidgetItem(item.get("name", "")))
+            self.history_table.setItem(row, 1, QTableWidgetItem(f"{w:.7f}"))
+            self.history_table.setItem(row, 2, QTableWidgetItem(f"{s:.7f}"))
+            self.history_table.setItem(row, 3, QTableWidgetItem(f"{e:.7f}"))
+            self.history_table.setItem(row, 4, QTableWidgetItem(f"{n:.7f}"))
+            self.history_table.setItem(row, 5, QTableWidgetItem(item.get("timestamp", "")))
+        self.history_table.resizeColumnsToContents()
+
+    def on_history_selected(self) -> None:
+        selected = self.history_table.selectedRanges()
+        if not selected:
+            return
+        row = selected[0].topRow()
+        if 0 <= row < len(self.history_data):
+            item = self.history_data[row]
+            bbox = item.get("bbox")
+            if bbox and len(bbox) == 4:
+                w, s, e, n = bbox
+                self.selected_bbox = (w, s, e, n)
+                self.min_lon_edit.setText(f"{w:.7f}")
+                self.min_lat_edit.setText(f"{s:.7f}")
+                self.max_lon_edit.setText(f"{e:.7f}")
+                self.max_lat_edit.setText(f"{n:.7f}")
+                self.use_bbox_check.setChecked(True)
+                self.update_map_active_bbox()
+
+    def delete_history(self) -> None:
+        selected = self.history_table.selectedRanges()
+        if not selected:
+            QMessageBox.information(self, "削除", "削除する履歴を選択してください。")
+            return
+        row = selected[0].topRow()
+        if 0 <= row < len(self.history_data):
+            deleted = self.history_data.pop(row)
+            self.save_history_to_file()
+            self.refresh_history_table()
+            self.update_map_history_bboxes()
+            self.log_msg(f"履歴を削除しました: {deleted.get('name')}")
+            if self.selected_bbox == tuple(deleted.get("bbox", [])):
+                self.clear_bbox()
+
+    def check_bbox_required(self) -> bool:
+        if not self.use_bbox_check.isChecked() or not self.selected_bbox:
+            QMessageBox.warning(
+                self,
+                "警告",
+                "出力範囲が設定されていないか、有効になっていません。\n"
+                "地図上の「範囲選択」ボタンを押してドラッグで囲むか、"
+                "数値を入力して「出力範囲を使用」にチェックを入れてください。"
+            )
+            return False
+        return True
+
+    def add_to_history(self, name: str, bbox: tuple[float, float, float, float]) -> None:
+        import datetime
+        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # 重複削除
+        self.history_data = [item for item in self.history_data if item.get("name") != name and tuple(item.get("bbox", [])) != bbox]
+        self.history_data.insert(0, {
+            "name": name,
+            "bbox": list(bbox),
+            "timestamp": now
+        })
+        self.save_history_to_file()
+        self.refresh_history_table()
+        self.update_map_history_bboxes()
+
     def _refresh_map(self, features: list[dict[str, Any]]) -> None:
         title = "抽出結果" if features else "No data"
         if self.store.source_path:
@@ -612,8 +1073,14 @@ class MainWindow(QMainWindow):
         self.table.resizeColumnsToContents()
 
     def export_geojson(self) -> None:
+        if not self.check_bbox_required():
+            return
         if not self.filtered:
             QMessageBox.information(self, "出力", "出力対象がありません。")
+            return
+        export_features = [f for f in self.filtered if self.feature_intersects_bbox(f, self.selected_bbox)]
+        if not export_features:
+            QMessageBox.information(self, "出力", "選択された出力範囲内にデータがありません。")
             return
         default = self.last_output_dir / "filtered_lines.geojson"
         path_str, _ = QFileDialog.getSaveFileName(
@@ -626,20 +1093,24 @@ class MainWindow(QMainWindow):
             return
         path = Path(path_str)
         try:
-            write_json(path, {"type": "FeatureCollection", "features": self.filtered}, pretty=True)
+            write_json(path, {"type": "FeatureCollection", "features": export_features}, pretty=True)
             self.last_output_dir = path.parent
-            self.log_msg(f"GeoJSON保存: {path}")
+            self.add_to_history(path.stem, self.selected_bbox)
+            self.log_msg(f"GeoJSON保存: {path} ({len(export_features)} features)")
             QMessageBox.information(self, "保存完了", f"GeoJSONを保存しました。\n{path}")
         except Exception as exc:
             QMessageBox.critical(self, "保存エラー", str(exc))
 
     def export_turnout_json(self) -> None:
+        if not self.check_bbox_required():
+            return
         if not self.filtered:
             QMessageBox.information(self, "出力", "出力対象がありません。")
             return
-        line_features = [f for f in self.filtered if self.geometry_is_line(f.get("geometry") or {})]
+        export_features = [f for f in self.filtered if self.feature_intersects_bbox(f, self.selected_bbox)]
+        line_features = [f for f in export_features if self.geometry_is_line(f.get("geometry") or {})]
         if not line_features:
-            QMessageBox.information(self, "出力", "線データがありません。Turnout用JSONはLineString/MultiLineStringが必要です。")
+            QMessageBox.information(self, "出力", "選択された出力範囲内に線データがありません。")
             return
         default = self.last_output_dir / "turnout_tracks.json"
         path_str, _ = QFileDialog.getSaveFileName(
@@ -655,6 +1126,7 @@ class MainWindow(QMainWindow):
             data = geojson_to_overpass(line_features)
             write_json(path, data, pretty=False)
             self.last_output_dir = path.parent
+            self.add_to_history(path.stem, self.selected_bbox)
             elements = data.get("elements", [])
             ways = sum(1 for e in elements if e.get("type") == "way")
             nodes = sum(1 for e in elements if e.get("type") == "node")
@@ -664,12 +1136,15 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "保存エラー", str(exc))
 
     def export_nrclip(self) -> None:
+        if not self.check_bbox_required():
+            return
         if not self.filtered:
             QMessageBox.information(self, "出力", "出力対象がありません。")
             return
-        line_features = [f for f in self.filtered if self.geometry_is_line(f.get("geometry") or {})]
+        export_features = [f for f in self.filtered if self.feature_intersects_bbox(f, self.selected_bbox)]
+        line_features = [f for f in export_features if self.geometry_is_line(f.get("geometry") or {})]
         if not line_features:
-            QMessageBox.information(self, "出力", "線データがありません。nrclip出力にはLineString/MultiLineStringが必要です。")
+            QMessageBox.information(self, "出力", "選択された出力範囲内に線データがありません。")
             return
         default = self.last_output_dir / "tracks.nrclip"
         path_str, _ = QFileDialog.getSaveFileName(
@@ -686,6 +1161,7 @@ class MainWindow(QMainWindow):
             data = geojson_to_nrclip_bytes(line_features, name)
             path.write_bytes(data)
             self.last_output_dir = path.parent
+            self.add_to_history(name, self.selected_bbox)
             self.log_msg(f"nrclip保存: {path} ({len(line_features)} features)")
             QMessageBox.information(self, "保存完了", f"nrclipを保存しました。\n{path}")
         except Exception as exc:

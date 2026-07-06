@@ -12,3 +12,4 @@ Turnout-main/
 
 # Temporary map outputs
 *.html
+.vscode

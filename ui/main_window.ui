@@ -176,6 +176,85 @@
              </property>
             </widget>
            </item>
+           <!-- BBox Toggle Row -->
+           <item row="7" column="0">
+            <widget class="QLabel" name="label_bbox">
+             <property name="text">
+              <string>出力範囲</string>
+             </property>
+            </widget>
+           </item>
+           <item row="7" column="1">
+            <widget class="QCheckBox" name="use_bbox_check">
+             <property name="text">
+              <string>出力範囲を使用</string>
+             </property>
+            </widget>
+           </item>
+           <!-- BBox Coordinates (Min Lon/Lat) -->
+           <item row="8" column="0">
+            <widget class="QLabel" name="label_bbox_min">
+             <property name="text">
+              <string>最小 経度/緯度</string>
+             </property>
+            </widget>
+           </item>
+           <item row="8" column="1">
+            <widget class="QWidget" name="bbox_min_widget" native="true">
+             <layout class="QHBoxLayout" name="bbox_min_layout">
+              <property name="leftMargin"><number>0</number></property>
+              <property name="topMargin"><number>0</number></property>
+              <property name="rightMargin"><number>0</number></property>
+              <property name="bottomMargin"><number>0</number></property>
+              <item>
+               <widget class="QLineEdit" name="min_lon_edit">
+                <property name="placeholderText"><string>最小経度</string></property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLineEdit" name="min_lat_edit">
+                <property name="placeholderText"><string>最小緯度</string></property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <!-- BBox Coordinates (Max Lon/Lat) -->
+           <item row="9" column="0">
+            <widget class="QLabel" name="label_bbox_max">
+             <property name="text">
+              <string>最大 経度/緯度</string>
+             </property>
+            </widget>
+           </item>
+           <item row="9" column="1">
+            <widget class="QWidget" name="bbox_max_widget" native="true">
+             <layout class="QHBoxLayout" name="bbox_max_layout">
+              <property name="leftMargin"><number>0</number></property>
+              <property name="topMargin"><number>0</number></property>
+              <property name="rightMargin"><number>0</number></property>
+              <property name="bottomMargin"><number>0</number></property>
+              <item>
+               <widget class="QLineEdit" name="max_lon_edit">
+                <property name="placeholderText"><string>最大経度</string></property>
+               </widget>
+              </item>
+               <item>
+               <widget class="QLineEdit" name="max_lat_edit">
+                <property name="placeholderText"><string>最大緯度</string></property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <!-- BBox Clear Button -->
+           <item row="10" column="1">
+            <widget class="QPushButton" name="clear_bbox_btn">
+             <property name="text">
+              <string>範囲クリア</string>
+             </property>
+            </widget>
+           </item>
           </layout>
          </widget>
         </item>
@@ -240,6 +319,34 @@
         <attribute name="title">
          <string>属性</string>
         </attribute>
+       </widget>
+       <!-- History Tab -->
+       <widget class="QWidget" name="history_tab">
+        <attribute name="title">
+         <string>履歴</string>
+        </attribute>
+        <layout class="QVBoxLayout" name="history_tab_layout">
+         <item>
+          <widget class="QTableWidget" name="history_table">
+           <property name="alternatingRowColors">
+            <bool>true</bool>
+           </property>
+           <property name="selectionMode">
+            <enum>QAbstractItemView::SingleSelection</enum>
+           </property>
+           <property name="selectionBehavior">
+            <enum>QAbstractItemView::SelectRows</enum>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="delete_history_btn">
+           <property name="text">
+            <string>選択した履歴を削除</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
        </widget>
       </widget>
      </widget>
