@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+
+# Virtual Environment
+.venv/
+
+# Reference repository
+Turnout-main/
+
+# Temporary map outputs
+*.html
