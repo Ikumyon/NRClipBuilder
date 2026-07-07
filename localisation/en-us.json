@@ -26,6 +26,8 @@
   "label_scale": "Scale Factor X / Y",
   "label_spline_tolerance": "Spline Tolerance (m)",
   "label_junction_spacing": "Junction Spacing (m)",
+  "label_max_spacing": "Max Spacing (m)",
+  "label_straight_tolerance": "Straight Tolerance (m)",
   "info_group": "Loaded Info",
   "info_label_empty": "No data loaded",
   "info_label_format": "Source File: {src}\nTotal Features: {total:,}\nFiltered: {filtered:,}\nFields Count: {fields}\n{crs}",

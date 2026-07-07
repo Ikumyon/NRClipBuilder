@@ -277,6 +277,8 @@ class MainWindow(QMainWindow):
         self.label_scale.setText(self.tr_msg("label_scale"))
         self.label_spline_tolerance.setText(self.tr_msg("label_spline_tolerance"))
         self.label_junction_spacing.setText(self.tr_msg("label_junction_spacing"))
+        self.label_max_spacing.setText(self.tr_msg("label_max_spacing"))
+        self.label_straight_tolerance.setText(self.tr_msg("label_straight_tolerance"))
         self.info_group.setTitle(self.tr_msg("info_group"))
         self.log.setPlaceholderText(self.tr_msg("log_placeholder"))
         
@@ -505,6 +507,8 @@ class MainWindow(QMainWindow):
             "scale_y": self.scale_y_spin.value(),
             "spline_tolerance": self.spline_tolerance_spin.value(),
             "junction_spacing": self.junction_spacing_spin.value(),
+            "max_spacing": self.max_spacing_spin.value(),
+            "straight_tolerance": self.straight_tolerance_spin.value(),
         }
         try:
             self.config_file.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -539,6 +543,8 @@ class MainWindow(QMainWindow):
             self.scale_y_spin.setValue(config.get("scale_y", 1.0))
             self.spline_tolerance_spin.setValue(config.get("spline_tolerance", 5.0))
             self.junction_spacing_spin.setValue(config.get("junction_spacing", 30.0))
+            self.max_spacing_spin.setValue(config.get("max_spacing", 200.0))
+            self.straight_tolerance_spin.setValue(config.get("straight_tolerance", 0.5))
         except Exception:
             pass
 
@@ -803,10 +809,14 @@ class MainWindow(QMainWindow):
             scale_y = self.scale_y_spin.value()
             spline_tolerance = self.spline_tolerance_spin.value()
             junction_spacing = self.junction_spacing_spin.value()
+            max_spacing = self.max_spacing_spin.value()
+            straight_tolerance = self.straight_tolerance_spin.value()
             data = geojson_to_nrclip_bytes(
                 line_features, name, scale_x, scale_y,
                 spline_tolerance=spline_tolerance,
-                junction_spacing=junction_spacing
+                junction_spacing=junction_spacing,
+                max_spacing=max_spacing,
+                straight_tolerance=straight_tolerance
             )
             path.write_bytes(data)
             self.last_output_dir = path.parent

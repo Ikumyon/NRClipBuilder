@@ -189,6 +189,75 @@ def spline_simplify(coords: list[tuple[float, float]], keep: list[bool], spline_
         if not added:
             break
 
+def mercator_to_latlon(x: float, y: float) -> tuple[float, float]:
+    """Inverse Mercator X/Y to lat/lon degrees."""
+    lon = math.degrees(x / EARTH_RADIUS)
+    lat = math.degrees(merc_y_to_lat_rad(y))
+    return lon, lat
+
+def is_nearly_straight(coords: list[tuple[float, float]], start_idx: int, end_idx: int, straight_tolerance: float) -> bool:
+    """Check if all coordinates between start_idx and end_idx are within straight_tolerance meters from the straight line connecting them."""
+    if end_idx - start_idx <= 1:
+        return True
+
+    xa, ya = coords[start_idx]
+    xb, yb = coords[end_idx]
+
+    dx = xb - xa
+    dy = yb - ya
+    ab_len = math.hypot(dx, dy)
+
+    if ab_len < 1e-5:
+        for i in range(start_idx + 1, end_idx):
+            px, py = coords[i]
+            if math.hypot(px - xa, py - ya) > straight_tolerance:
+                return False
+        return True
+
+    for i in range(start_idx + 1, end_idx):
+        px, py = coords[i]
+        dist = abs(dx * (py - ya) - dy * (px - xa)) / ab_len
+        if dist > straight_tolerance:
+            return False
+
+    return True
+
+def interpolate_along_polyline(
+    coords: list[tuple[float, float]],
+    start_idx: int,
+    end_idx: int,
+    max_spacing: float
+) -> list[tuple[float, float]]:
+    """Interpolate coordinates along the polyline connecting start_idx and end_idx with max_spacing interval (in Mercator meters)."""
+    cum_len = [0.0]
+    for k in range(start_idx, end_idx):
+        dx = coords[k + 1][0] - coords[k][0]
+        dy = coords[k + 1][1] - coords[k][1]
+        cum_len.append(cum_len[-1] + math.hypot(dx, dy))
+
+    total_len = cum_len[-1]
+    if total_len < 1.0 or max_spacing <= 0.0:
+        return []
+
+    n = math.ceil(total_len / max_spacing)
+    interpolated = []
+    for j in range(1, n):
+        target = total_len * j / n
+        seg = 0
+        while seg < len(cum_len) - 1 and cum_len[seg + 1] < target:
+            seg += 1
+        seg_start_len = cum_len[seg]
+        seg_end_len = cum_len[seg + 1]
+        if seg_end_len > seg_start_len:
+            local_t = (target - seg_start_len) / (seg_end_len - seg_start_len)
+        else:
+            local_t = 0.0
+        oi = start_idx + seg
+        px = coords[oi][0] + (coords[oi + 1][0] - coords[oi][0]) * local_t
+        py = coords[oi][1] + (coords[oi + 1][1] - coords[oi][1]) * local_t
+        interpolated.append((px, py))
+    return interpolated
+
 def encode_nrc1_container(payload: bytes, version: int = MODEL_VERSION) -> bytes:
     """Compress payload and package with NRC1 header + checksum."""
     cctx = zstd.ZstdCompressor(level=3)
@@ -428,9 +497,11 @@ def geojson_to_nrclip_bytes(
     scale_x: float = 1.0,
     scale_y: float = 1.0,
     spline_tolerance: float = 5.0,
-    junction_spacing: float = 30.0
+    junction_spacing: float = 30.0,
+    max_spacing: float = 200.0,
+    straight_tolerance: float = 0.5
 ) -> bytes:
-    """Convert geojson features to NIMBY Rails .nrclip bytes with Hobby Spline simplification."""
+    """Convert geojson features to NIMBY Rails .nrclip bytes with Hobby Spline simplification and conditional subdivision."""
     # 1. 路線データを routes リストとして集約
     routes = []
     for feat in features:
@@ -475,7 +546,7 @@ def geojson_to_nrclip_bytes(
         if len(unique_routes) >= 2 or len(refs) >= 2:
             junction_coords.add(key)
 
-    # 3. 各 route の簡素化 (spline_simplify)
+    # 3. 各 route の簡素化 (spline_simplify) & 細分化 (subdivide)
     for r in routes:
         coords = r['coords']
         # メルカトル座標の計算
@@ -496,8 +567,33 @@ def geojson_to_nrclip_bytes(
         keep_near_junction_endpoints(merc_coords, keep, coords, junction_coords, junction_spacing)
         spline_simplify(merc_coords, keep, spline_tolerance)
         
-        # 簡素化された座標リスト
-        r['simplified_coords'] = [coords[i] for i in range(len(keep)) if keep[i]]
+        # 簡素化および細分化の適用
+        kept_indices = [i for i, k in enumerate(keep) if k]
+        final_coords = []
+        for idx in range(len(kept_indices)):
+            i0 = kept_indices[idx]
+            final_coords.append(coords[i0])
+            if idx + 1 >= len(kept_indices):
+                continue
+            i1 = kept_indices[idx + 1]
+            
+            # 二点間のメルカトル距離を確認
+            x0, y0 = merc_coords[i0]
+            x1, y1 = merc_coords[i1]
+            seg_dist = math.hypot(x1 - x0, y1 - y0)
+            
+            if seg_dist > max_spacing and max_spacing > 0.0:
+                # ほぼ直線（＝同じ向きが連続）であれば細分化をスキップ
+                if is_nearly_straight(merc_coords, i0, i1, straight_tolerance):
+                    continue
+                
+                # 直線ではない場合のみ細分化（折れ線に沿って等間隔に補間）
+                interp_merc = interpolate_along_polyline(merc_coords, i0, i1, max_spacing)
+                for mx, my in interp_merc:
+                    mlon, mlat = mercator_to_latlon(mx, my)
+                    final_coords.append((mlon, mlat))
+                    
+        r['simplified_coords'] = final_coords
 
     # 4. トラックノードの構築
     track_nodes = []
