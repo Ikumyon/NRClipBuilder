@@ -47,6 +47,35 @@
         </size>
        </property>
        <layout class="QVBoxLayout" name="leftLayout">
+        <!-- Language Selector Group -->
+        <item>
+         <widget class="QWidget" name="lang_container" native="true">
+          <layout class="QHBoxLayout" name="lang_layout">
+           <property name="leftMargin">
+            <number>0</number>
+           </property>
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="rightMargin">
+            <number>0</number>
+           </property>
+           <property name="bottomMargin">
+            <number>0</number>
+           </property>
+           <item>
+            <widget class="QLabel" name="label_lang">
+             <property name="text">
+              <string>Language / 言語</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QComboBox" name="lang_combo"/>
+           </item>
+          </layout>
+         </widget>
+        </item>
         <!-- Filter Group -->
         <item>
          <widget class="QGroupBox" name="filter_group">
@@ -356,34 +385,45 @@
          <string>属性</string>
         </attribute>
        </widget>
-       <!-- History Tab -->
-       <widget class="QWidget" name="history_tab">
-        <attribute name="title">
-         <string>履歴</string>
-        </attribute>
-        <layout class="QVBoxLayout" name="history_tab_layout">
-         <item>
-          <widget class="QTableWidget" name="history_table">
-           <property name="alternatingRowColors">
-            <bool>true</bool>
-           </property>
-           <property name="selectionMode">
-            <enum>QAbstractItemView::SingleSelection</enum>
-           </property>
-           <property name="selectionBehavior">
-            <enum>QAbstractItemView::SelectRows</enum>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QPushButton" name="delete_history_btn">
-           <property name="text">
-            <string>選択した履歴を削除</string>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </widget>
+        <!-- History Tab -->
+        <widget class="QWidget" name="history_tab">
+         <attribute name="title">
+          <string>履歴</string>
+         </attribute>
+         <layout class="QVBoxLayout" name="history_tab_layout">
+          <item>
+           <widget class="QTableWidget" name="history_table">
+            <property name="alternatingRowColors">
+             <bool>true</bool>
+            </property>
+            <property name="selectionMode">
+             <enum>QAbstractItemView::ExtendedSelection</enum>
+            </property>
+            <property name="selectionBehavior">
+             <enum>QAbstractItemView::SelectRows</enum>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="history_btn_layout">
+            <item>
+             <widget class="QPushButton" name="delete_history_btn">
+              <property name="text">
+               <string>選択した履歴を削除</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="clear_history_btn">
+              <property name="text">
+               <string>すべての履歴を削除</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </widget>
       </widget>
      </widget>
     </item>

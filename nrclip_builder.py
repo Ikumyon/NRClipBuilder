@@ -14,7 +14,7 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Qt, QFile
+from PySide6.QtCore import Qt, QFile, QLocale
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -38,6 +38,8 @@ from core.widgets import UiLoader, MapWidget, HAS_WEBENGINE
 
 APP_TITLE = "NRClipBuilder"
 MAX_TABLE_ROWS = 300
+
+DEFAULT_TRANSLATION: dict[str, str] = {}
 
 
 def get_resource_path(relative_path: str) -> Path:
@@ -72,6 +74,36 @@ class MainWindow(QMainWindow):
         loader.load(ui_file)
         ui_file.close()
 
+        # 言語リストのスキャン
+        self.config_file = get_executable_dir() / "app_config.json"
+        self.available_langs = self.scan_languages()
+
+        # 言語初期設定とロード
+        self.current_lang = self.detect_initial_lang()
+        self.translation: dict[str, Any] = {}
+        self.load_localisation(self.current_lang)
+
+        # コンボボックスの動的構築
+        self.lang_combo.blockSignals(True)
+        self.lang_combo.clear()
+        for code, name in self.available_langs:
+            self.lang_combo.addItem(name, code)
+        
+        # 初期選択の設定
+        idx = self.lang_combo.findData(self.current_lang)
+        if idx != -1:
+            self.lang_combo.setCurrentIndex(idx)
+        else:
+            for i in range(self.lang_combo.count()):
+                code = self.lang_combo.itemData(i)
+                if code and (code.startswith(self.current_lang) or self.current_lang.startswith(code)):
+                    self.lang_combo.setCurrentIndex(i)
+                    break
+            else:
+                self.lang_combo.setCurrentIndex(0)
+        self.lang_combo.blockSignals(False)
+        self.lang_combo.currentIndexChanged.connect(self.on_lang_combo_changed)
+
         # テーブルのプロパティ設定
         self.table.setAlternatingRowColors(True)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
@@ -86,7 +118,6 @@ class MainWindow(QMainWindow):
         # BBox 関連の初期化とシグナル接続
         self.selected_bbox = None
         self.history_file = get_executable_dir() / "bbox_history.json"
-        self.config_file = get_executable_dir() / "app_config.json"
         self.history_data = []
 
         if HAS_WEBENGINE:
@@ -102,9 +133,9 @@ class MainWindow(QMainWindow):
 
         # 履歴テーブルの初期設定
         self.history_table.setColumnCount(6)
-        self.history_table.setHorizontalHeaderLabels(["名前", "最小経度", "最小緯度", "最大経度", "最大緯度", "出力日時"])
         self.history_table.itemSelectionChanged.connect(self.on_history_selected)
         self.delete_history_btn.clicked.connect(self.delete_history)
+        self.clear_history_btn.clicked.connect(self.clear_history)
 
         self.load_history_from_file()
         self.load_config_from_file()
@@ -117,9 +148,175 @@ class MainWindow(QMainWindow):
         self.action_open_html.triggered.connect(self.open_preview_in_browser)
         self.action_quit.triggered.connect(self.close)
 
+        # 初期ローカライズの適用
+        self.retranslate_ui()
+        self.info_label.setText(self.tr_msg("info_label_empty"))
+
         # ステータスバーと初期化
-        self.statusBar().showMessage("ファイルを開いてください。対応: N05 ZIP / SHP / GeoJSON")
+        self.statusBar().showMessage(self.tr_msg("msg_select_file"))
         self._refresh_map([])
+
+    def scan_languages(self) -> list[tuple[str, str]]:
+        loc_dir = get_executable_dir() / "localisation"
+        langs = []
+        if loc_dir.exists():
+            for json_file in loc_dir.glob("*.json"):
+                code = json_file.stem.lower()
+                try:
+                    data = json.loads(json_file.read_text(encoding="utf-8"))
+                    name = data.get("lang_name", code)
+                    langs.append((code, name))
+                except Exception:
+                    pass
+
+        def sort_key(item):
+            code, name = item
+            if code == "ja-jp":
+                return (0, name)
+            if code == "en-us":
+                return (1, name)
+            return (2, name)
+            
+        return sorted(langs, key=sort_key)
+
+    def detect_initial_lang(self) -> str:
+        # スキャンされた言語コードの一覧を取得
+        valid_codes = [code for code, _ in self.available_langs] if hasattr(self, "available_langs") else []
+        
+        # ヘルパー: 与えられた言語コードをスキャンされたリストとマッチングする
+        def match_lang(target: str) -> str | None:
+            target = target.lower().replace("_", "-")
+            # 1. 完全一致
+            if target in valid_codes:
+                return target
+            # 2. 前方一致 (言語コードの先頭部分、例: "ja" や "ja-jp")
+            target_base = target.split("-")[0]
+            for code in valid_codes:
+                if code == target_base or code.split("-")[0] == target_base:
+                    return code
+            return None
+
+        # 1. 設定ファイルからの読み込みとマッチング
+        if self.config_file.exists():
+            try:
+                config = json.loads(self.config_file.read_text(encoding="utf-8"))
+                if "lang" in config:
+                    matched = match_lang(str(config["lang"]))
+                    if matched:
+                        return matched
+            except Exception:
+                pass
+                
+        # 2. システムロケールからの読み込みとマッチング
+        sys_lang = QLocale.system().name().lower().replace("_", "-")
+        matched = match_lang(sys_lang)
+        if matched:
+            return matched
+            
+        # 3. デフォルト (リストにある en-us を優先、無ければ最初の言語)
+        if "en-us" in valid_codes:
+            return "en-us"
+        if valid_codes:
+            return valid_codes[0]
+        return "ja-jp"
+
+    def load_localisation(self, lang: str) -> None:
+        valid_codes = [code for code, _ in self.available_langs] if hasattr(self, "available_langs") else []
+        # 短縮名（"ja"など）やシステムロケール名を正規化する
+        lang_norm = lang.lower().replace("_", "-")
+        if lang_norm not in valid_codes:
+            # 前方一致で検索
+            base = lang_norm.split("-")[0]
+            for code in valid_codes:
+                if code.split("-")[0] == base:
+                    lang = code
+                    break
+            else:
+                lang = lang_norm
+        else:
+            lang = lang_norm
+
+        self.current_lang = lang
+        loc_dir = get_executable_dir() / "localisation"
+        loc_file = loc_dir / f"{lang}.json"
+        self.translation = {}
+        if loc_file.exists():
+            try:
+                self.translation = json.loads(loc_file.read_text(encoding="utf-8"))
+            except Exception as e:
+                print(f"Localisation load error: {e}")
+        
+
+
+    def tr_msg(self, key: str) -> str:
+        return self.translation.get(key, DEFAULT_TRANSLATION.get(key, key))
+
+    def retranslate_ui(self) -> None:
+        self.label_lang.setText(self.tr_msg("lang_label"))
+        self.filter_group.setTitle(self.tr_msg("filter_group"))
+        self.label_keyword.setText(self.tr_msg("label_keyword"))
+        self.label_fields.setText(self.tr_msg("label_fields"))
+        self.label_exclude.setText(self.tr_msg("label_exclude"))
+        self.exclude_edit.setPlaceholderText(self.tr_msg("exclude_placeholder"))
+        self.label_condition.setText(self.tr_msg("label_condition"))
+        self.or_radio.setText(self.tr_msg("or_radio"))
+        self.and_radio.setText(self.tr_msg("and_radio"))
+        self.label_option.setText(self.tr_msg("label_option"))
+        self.regex_check.setText(self.tr_msg("regex_check"))
+        self.line_only_check.setText(self.tr_msg("line_only_check"))
+        self.apply_btn.setText(self.tr_msg("apply_btn"))
+        self.label_bbox.setText(self.tr_msg("label_bbox"))
+        self.use_bbox_check.setText(self.tr_msg("use_bbox_check"))
+        self.label_bbox_min.setText(self.tr_msg("label_bbox_min"))
+        self.min_lon_edit.setPlaceholderText(self.tr_msg("min_lon_placeholder"))
+        self.min_lat_edit.setPlaceholderText(self.tr_msg("min_lat_placeholder"))
+        self.label_bbox_max.setText(self.tr_msg("label_bbox_max"))
+        self.max_lon_edit.setPlaceholderText(self.tr_msg("max_lon_placeholder"))
+        self.max_lat_edit.setPlaceholderText(self.tr_msg("max_lat_placeholder"))
+        self.clear_bbox_btn.setText(self.tr_msg("clear_bbox_btn"))
+        self.label_scale.setText(self.tr_msg("label_scale"))
+        self.info_group.setTitle(self.tr_msg("info_group"))
+        self.log.setPlaceholderText(self.tr_msg("log_placeholder"))
+        
+        self.tabs.setTabText(0, self.tr_msg("tab_map"))
+        self.tabs.setTabText(1, self.tr_msg("tab_table"))
+        self.tabs.setTabText(2, self.tr_msg("tab_history"))
+        self.delete_history_btn.setText(self.tr_msg("delete_history_btn"))
+        self.clear_history_btn.setText(self.tr_msg("clear_history_btn"))
+        
+        self.menu_file.setTitle(self.tr_msg("menu_file"))
+        self.action_open.setText(self.tr_msg("action_open"))
+        self.action_export_geojson.setText(self.tr_msg("action_export_geojson"))
+        self.action_export_turnout.setText(self.tr_msg("action_export_turnout"))
+        self.action_export_nrclip.setText(self.tr_msg("action_export_nrclip"))
+        self.action_open_html.setText(self.tr_msg("action_open_html"))
+        self.action_quit.setText(self.tr_msg("action_quit"))
+        
+        headers = self.tr_msg("history_headers")
+        if isinstance(headers, list):
+            self.history_table.setHorizontalHeaderLabels(headers)
+        
+        self.update_window_title()
+        self.update_info_label()
+        
+        if hasattr(self, "map_widget"):
+            self.map_widget.retranslate_map(self.current_lang.split("-")[0])
+
+    def update_window_title(self) -> None:
+        src_name = self.store.source_path.name if self.store.source_path else ""
+        title_base = self.tr_msg("window_title")
+        if src_name:
+            self.setWindowTitle(f"{title_base} - {src_name}")
+        else:
+            self.setWindowTitle(title_base)
+
+    def on_lang_combo_changed(self, index: int) -> None:
+        lang = self.lang_combo.itemData(index)
+        if lang:
+            self.load_localisation(lang)
+            self.retranslate_ui()
+            self.save_config_to_file()
+
 
     def log_msg(self, msg: str) -> None:
         self.log.appendPlainText(msg)
@@ -128,7 +325,7 @@ class MainWindow(QMainWindow):
     def open_file(self) -> None:
         path_str, _ = QFileDialog.getOpenFileName(
             self,
-            "データを開く",
+            self.tr_msg("dialog_open_file_title"),
             str(self.last_output_dir),
             "GIS data (*.zip *.shp *.geojson *.json);;All files (*.*)",
         )
@@ -139,32 +336,42 @@ class MainWindow(QMainWindow):
     def load_path(self, path: Path) -> None:
         try:
             self.store.cleanup()
-            self.setWindowTitle(f"{APP_TITLE} - {path.name}")
+            self.update_window_title()
             self.log.clear()
-            self.log_msg(f"読み込み中: {path}")
+            self.log_msg(self.tr_msg("msg_loading").format(path=path))
             QApplication.setOverrideCursor(Qt.WaitCursor)
             self.store = load_any(path)
             QApplication.restoreOverrideCursor()
             self.last_output_dir = path.parent
-            self.log_msg(f"読み込み完了: {len(self.store.features):,} features")
+            self.log_msg(self.tr_msg("msg_load_success").format(count=len(self.store.features)))
             if self.store.fields:
-                self.log_msg("フィールド: " + ", ".join(self.store.fields[:60]) + (" ..." if len(self.store.fields) > 60 else ""))
-            self.log_msg(self.store.crs_note)
+                fields_str = ", ".join(self.store.fields[:60]) + (" ..." if len(self.store.fields) > 60 else "")
+                self.log_msg(self.tr_msg("msg_fields").format(fields=fields_str))
+            if self.store.crs_note:
+                self.log_msg(self.store.crs_note)
             self.update_info_label()
             self.apply_filter()
         except Exception as exc:
             QApplication.restoreOverrideCursor()
-            self.log_msg("エラー: " + str(exc))
-            QMessageBox.critical(self, "読み込みエラー", f"{exc}\n\n{traceback.format_exc()}")
+            self.log_msg(self.tr_msg("dialog_error") + str(exc))
+            QMessageBox.critical(self, self.tr_msg("msg_load_error_title"), f"{exc}\n\n{traceback.format_exc()}")
 
     def update_info_label(self) -> None:
+        if not hasattr(self, "translation") or not self.translation:
+            return
+        if not self.store.features and not self.store.source_path:
+            self.info_label.setText(self.tr_msg("info_label_empty"))
+            return
         src = self.store.source_path or Path("-")
+        fmt = self.tr_msg("info_label_format")
         self.info_label.setText(
-            f"元ファイル: {src}\n"
-            f"全件: {len(self.store.features):,}\n"
-            f"抽出: {len(self.filtered):,}\n"
-            f"フィールド数: {len(self.store.fields)}\n"
-            f"{self.store.crs_note}"
+            fmt.format(
+                src=src,
+                total=len(self.store.features),
+                filtered=len(self.filtered),
+                fields=len(self.store.fields),
+                crs=self.store.crs_note
+            )
         )
 
     def apply_filter(self) -> None:
@@ -180,12 +387,12 @@ class MainWindow(QMainWindow):
                 match_all=self.and_radio.isChecked(),
                 exclude_text=self.exclude_edit.text(),
             )
-            self.log_msg(f"抽出: {len(self.filtered):,} / {len(self.store.features):,} features")
+            self.log_msg(self.tr_msg("msg_filtered_count").format(filtered=len(self.filtered), total=len(self.store.features)))
             self.update_info_label()
             self._refresh_map(self.filtered)
             self._refresh_table(self.filtered)
         except Exception as exc:
-            QMessageBox.critical(self, "フィルターエラー", f"{exc}\n\n{traceback.format_exc()}")
+            QMessageBox.critical(self, self.tr_msg("msg_filter_error_title"), f"{exc}\n\n{traceback.format_exc()}")
 
     def on_use_bbox_changed(self, state: int) -> None:
         if self.use_bbox_check.isChecked():
@@ -283,6 +490,7 @@ class MainWindow(QMainWindow):
 
     def save_config_to_file(self) -> None:
         config = {
+            "lang": self.current_lang,
             "keywords": self.keyword_edit.text(),
             "fields": self.field_edit.text(),
             "exclude": self.exclude_edit.text(),
@@ -377,28 +585,62 @@ class MainWindow(QMainWindow):
                 self.update_map_active_bbox()
 
     def delete_history(self) -> None:
-        selected = self.history_table.selectedRanges()
-        if not selected:
-            QMessageBox.information(self, "削除", "削除する履歴を選択してください。")
+        selected_ranges = self.history_table.selectedRanges()
+        if not selected_ranges:
+            QMessageBox.information(self, self.tr_msg("msg_delete_history_title"), self.tr_msg("msg_delete_history_warn"))
             return
-        row = selected[0].topRow()
-        if 0 <= row < len(self.history_data):
-            deleted = self.history_data.pop(row)
+        
+        selected_rows = set()
+        for r in selected_ranges:
+            for row in range(r.topRow(), r.bottomRow() + 1):
+                selected_rows.add(row)
+                
+        if not selected_rows:
+            return
+
+        deleted_names = []
+        # インデックスがズレないように降順で削除
+        for row in sorted(selected_rows, reverse=True):
+            if 0 <= row < len(self.history_data):
+                deleted = self.history_data.pop(row)
+                deleted_names.append(deleted.get("name", ""))
+                
+        self.save_history_to_file()
+        self.refresh_history_table()
+        self.update_map_history_bboxes()
+        
+        if len(deleted_names) == 1:
+            self.log_msg(self.tr_msg("msg_history_deleted").format(name=deleted_names[0]))
+        else:
+            msg = f"Deleted {len(deleted_names)} history entries" if self.current_lang.startswith("en") else f"履歴を {len(deleted_names)} 件削除しました。"
+            self.log_msg(msg)
+            
+        self.clear_bbox()
+
+    def clear_history(self) -> None:
+        if not self.history_data:
+            return
+        confirm = QMessageBox.question(
+            self,
+            self.tr_msg("msg_clear_history_title"),
+            self.tr_msg("msg_clear_history_confirm"),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if confirm == QMessageBox.Yes:
+            self.history_data = []
             self.save_history_to_file()
             self.refresh_history_table()
             self.update_map_history_bboxes()
-            self.log_msg(f"履歴を削除しました: {deleted.get('name')}")
-            if self.selected_bbox == tuple(deleted.get("bbox", [])):
-                self.clear_bbox()
+            self.log_msg(self.tr_msg("msg_history_cleared"))
+            self.clear_bbox()
 
     def check_bbox_required(self) -> bool:
         if not self.use_bbox_check.isChecked() or not self.selected_bbox:
             QMessageBox.warning(
                 self,
-                "警告",
-                "出力範囲が設定されていないか、有効になっていません。\n"
-                "地図上の「範囲選択」ボタンを押してドラッグで囲むか、"
-                "数値を入力して「出力範囲を使用」にチェックを入れてください。"
+                self.tr_msg("msg_bbox_warn_title"),
+                self.tr_msg("msg_bbox_warn")
             )
             return False
         return True
@@ -417,10 +659,14 @@ class MainWindow(QMainWindow):
         self.update_map_history_bboxes()
 
     def _refresh_map(self, features: list[dict[str, Any]]) -> None:
-        title = "抽出結果" if features else "No data"
+        title = self.tr_msg("msg_filtered_count").split(":")[0] if features else "No data"
         if self.store.source_path:
             title = self.store.source_path.name
-        self.map_widget.set_geojson({"type": "FeatureCollection", "features": features}, title=title)
+        self.map_widget.set_geojson(
+            {"type": "FeatureCollection", "features": features},
+            title=title,
+            lang=self.current_lang.split("-")[0]
+        )
 
     def _refresh_table(self, features: list[dict[str, Any]]) -> None:
         fields = collect_fields(features) if features else self.store.fields
@@ -446,7 +692,7 @@ class MainWindow(QMainWindow):
         if not self.check_bbox_required():
             return
         if not self.filtered:
-            QMessageBox.information(self, "出力", "出力対象がありません。")
+            QMessageBox.information(self, self.tr_msg("msg_export_title"), self.tr_msg("msg_no_export_data"))
             return
         export_features = []
         for f in self.filtered:
@@ -456,12 +702,12 @@ class MainWindow(QMainWindow):
                 new_feat["geometry"] = clipped_geom
                 export_features.append(new_feat)
         if not export_features:
-            QMessageBox.information(self, "出力", "選択された出力範囲内にデータがありません。")
+            QMessageBox.information(self, self.tr_msg("msg_export_title"), self.tr_msg("msg_no_data_in_bbox"))
             return
         default = self.last_output_dir / "filtered_lines.geojson"
         path_str, _ = QFileDialog.getSaveFileName(
             self,
-            "GeoJSONを保存",
+            self.tr_msg("msg_save_geojson"),
             str(default),
             "GeoJSON (*.geojson);;JSON (*.json);;All files (*.*)",
         )
@@ -472,16 +718,16 @@ class MainWindow(QMainWindow):
             write_json(path, {"type": "FeatureCollection", "features": export_features}, pretty=True)
             self.last_output_dir = path.parent
             self.add_to_history(path.stem, self.selected_bbox)
-            self.log_msg(f"GeoJSON保存: {path} ({len(export_features)} features)")
-            QMessageBox.information(self, "保存完了", f"GeoJSONを保存しました。\n{path}")
+            self.log_msg(self.tr_msg("msg_save_success_geojson").format(path=path).replace("\n", " "))
+            QMessageBox.information(self, self.tr_msg("msg_save_success_title"), self.tr_msg("msg_save_success_geojson").format(path=path))
         except Exception as exc:
-            QMessageBox.critical(self, "保存エラー", str(exc))
+            QMessageBox.critical(self, self.tr_msg("msg_save_error_title"), str(exc))
 
     def export_turnout_json(self) -> None:
         if not self.check_bbox_required():
             return
         if not self.filtered:
-            QMessageBox.information(self, "出力", "出力対象がありません。")
+            QMessageBox.information(self, self.tr_msg("msg_export_title"), self.tr_msg("msg_no_export_data"))
             return
         export_features = []
         for f in self.filtered:
@@ -492,12 +738,12 @@ class MainWindow(QMainWindow):
                 export_features.append(new_feat)
         line_features = [f for f in export_features if geometry_is_line(f.get("geometry") or {})]
         if not line_features:
-            QMessageBox.information(self, "出力", "選択された出力範囲内に線データがありません。")
+            QMessageBox.information(self, self.tr_msg("msg_export_title"), self.tr_msg("msg_no_line_in_bbox"))
             return
         default = self.last_output_dir / "turnout_tracks.json"
         path_str, _ = QFileDialog.getSaveFileName(
             self,
-            "Turnout用JSONを保存",
+            self.tr_msg("msg_save_turnout"),
             str(default),
             "JSON (*.json);;All files (*.*)",
         )
@@ -512,16 +758,16 @@ class MainWindow(QMainWindow):
             elements = data.get("elements", [])
             ways = sum(1 for e in elements if e.get("type") == "way")
             nodes = sum(1 for e in elements if e.get("type") == "node")
-            self.log_msg(f"Turnout用JSON保存: {path} ({nodes} nodes, {ways} ways)")
-            QMessageBox.information(self, "保存完了", f"Turnout用JSONを保存しました。\n{path}\n{nodes} nodes, {ways} ways")
+            self.log_msg(self.tr_msg("msg_save_success_turnout").format(path=path, nodes=nodes, ways=ways).replace("\n", " "))
+            QMessageBox.information(self, self.tr_msg("msg_save_success_title"), self.tr_msg("msg_save_success_turnout").format(path=path, nodes=nodes, ways=ways))
         except Exception as exc:
-            QMessageBox.critical(self, "保存エラー", str(exc))
+            QMessageBox.critical(self, self.tr_msg("msg_save_error_title"), str(exc))
 
     def export_nrclip(self) -> None:
         if not self.check_bbox_required():
             return
         if not self.filtered:
-            QMessageBox.information(self, "出力", "出力対象がありません。")
+            QMessageBox.information(self, self.tr_msg("msg_export_title"), self.tr_msg("msg_no_export_data"))
             return
         export_features = []
         for f in self.filtered:
@@ -532,12 +778,12 @@ class MainWindow(QMainWindow):
                 export_features.append(new_feat)
         line_features = [f for f in export_features if geometry_is_line(f.get("geometry") or {})]
         if not line_features:
-            QMessageBox.information(self, "出力", "選択された出力範囲内に線データがありません。")
+            QMessageBox.information(self, self.tr_msg("msg_export_title"), self.tr_msg("msg_no_line_in_bbox"))
             return
         default = self.last_output_dir / "tracks.nrclip"
         path_str, _ = QFileDialog.getSaveFileName(
             self,
-            "nrclipを保存",
+            self.tr_msg("msg_save_nrclip"),
             str(default),
             "NIMBY Rails Clipboard (*.nrclip);;All files (*.*)",
         )
@@ -552,17 +798,17 @@ class MainWindow(QMainWindow):
             path.write_bytes(data)
             self.last_output_dir = path.parent
             self.add_to_history(name, self.selected_bbox)
-            self.log_msg(f"nrclip保存: {path} ({len(line_features)} features)")
-            QMessageBox.information(self, "保存完了", f"nrclipを保存しました。\n{path}")
+            self.log_msg(self.tr_msg("msg_save_success_nrclip").format(path=path).replace("\n", " "))
+            QMessageBox.information(self, self.tr_msg("msg_save_success_title"), self.tr_msg("msg_save_success_nrclip").format(path=path))
         except Exception as exc:
-            QMessageBox.critical(self, "保存エラー", f"{exc}\n\n{traceback.format_exc()}")
+            QMessageBox.critical(self, self.tr_msg("msg_save_error_title"), f"{exc}\n\n{traceback.format_exc()}")
 
     def open_preview_in_browser(self) -> None:
         import webbrowser
         if self.map_widget.last_html_path and self.map_widget.last_html_path.exists():
             webbrowser.open(self.map_widget.last_html_path.as_uri())
         else:
-            QMessageBox.information(self, "プレビュー", "まだプレビューHTMLがありません。")
+            QMessageBox.information(self, self.tr_msg("msg_preview_title"), self.tr_msg("msg_no_preview_html"))
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         self.save_config_to_file()

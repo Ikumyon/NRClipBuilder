@@ -5,11 +5,19 @@ from typing import Any
 APP_TITLE = "NRClipBuilder"
 
 
-def make_leaflet_html(geojson: dict[str, Any], title: str = APP_TITLE) -> str:
+def make_leaflet_html(geojson: dict[str, Any], title: str = APP_TITLE, lang: str = "ja") -> str:
     gj = json.dumps(geojson, ensure_ascii=False, separators=(",", ":"))
     feature_count = len(geojson.get("features", []))
+    gsi_attr = "GSI Map" if lang == "en" else "国土地理院地図"
+    gsi_layer_name = "GSI Map" if lang == "en" else "国土地理院地図"
+    osm_layer_name = "OpenStreetMap"
+    history_layer_name = "History Bounds" if lang == "en" else "過去の出力履歴"
+    no_attr_text = "(No attributes)" if lang == "en" else "(属性なし)"
+    select_btn_text = "Select BBox" if lang == "en" else "範囲選択"
+    selecting_btn_text = "Selecting BBox (Drag on map)" if lang == "en" else "範囲選択中 (ドラッグして囲む)"
+
     return f"""<!doctype html>
-<html lang="ja">
+<html lang="{lang}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -35,9 +43,10 @@ def make_leaflet_html(geojson: dict[str, Any], title: str = APP_TITLE) -> str:
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const data = {gj};
+const lang = '{lang}';
 const map = L.map('map', {{ zoomControl: true }});
 const gsiStd = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{{z}}/{{x}}/{{y}}.png', {{
-  attribution: '国土地理院地図', maxZoom: 18
+  attribution: '{gsi_attr}', maxZoom: 18
 }});
 const osm = L.tileLayer('https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
   attribution: '&copy; OpenStreetMap contributors', maxZoom: 19
@@ -47,14 +56,14 @@ gsiStd.addTo(map);
 // History layer group and controls
 const historyLayer = L.layerGroup().addTo(map);
 L.control.layers(
-  {{'国土地理院地図': gsiStd, 'OpenStreetMap': osm}},
-  {{'過去の出力履歴': historyLayer}},
+  {{'{gsi_layer_name}': gsiStd, '{osm_layer_name}': osm}},
+  {{'{history_layer_name}': historyLayer}},
   {{collapsed: false}}
 ).addTo(map);
 
 function propHtml(props) {{
   const keys = Object.keys(props || {{}}).slice(0, 30);
-  if (!keys.length) return '(属性なし)';
+  if (!keys.length) return '{no_attr_text}';
   return '<table>' + keys.map(k => '<tr><th style="text-align:left;padding-right:8px">' + escapeHtml(k) + '</th><td>' + escapeHtml(String(props[k] ?? '')) + '</td></tr>').join('') + '</table>';
 }}
 function escapeHtml(s) {{ return s.replace(/[&<>"']/g, m => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[m])); }}
@@ -81,7 +90,7 @@ const SelectControl = L.Control.extend({{
   options: {{ position: 'topleft' }},
   onAdd: function(map) {{
     const btn = L.DomUtil.create('button', 'leaflet-bar');
-    btn.innerHTML = '範囲選択';
+    btn.innerHTML = '{select_btn_text}';
     btn.style.backgroundColor = 'white';
     btn.style.border = '2px solid rgba(0,0,0,0.2)';
     btn.style.borderRadius = '4px';
@@ -94,11 +103,11 @@ const SelectControl = L.Control.extend({{
       selectMode = !selectMode;
       if (selectMode) {{
         btn.style.backgroundColor = '#ffc9c9';
-        btn.innerHTML = '範囲選択中 (ドラッグして囲む)';
+        btn.innerHTML = '{selecting_btn_text}';
         map.dragging.disable();
       }} else {{
         btn.style.backgroundColor = 'white';
-        btn.innerHTML = '範囲選択';
+        btn.innerHTML = '{select_btn_text}';
         map.dragging.enable();
       }}
     }});
@@ -220,7 +229,7 @@ map.on('mouseup', function(e) {{
     const btn = btns[i];
     if (btn.classList.contains('leaflet-bar')) {{
       btn.style.backgroundColor = 'white';
-      btn.innerHTML = '範囲選択';
+      btn.innerHTML = '{select_btn_text}';
     }}
   }}
   map.dragging.enable();

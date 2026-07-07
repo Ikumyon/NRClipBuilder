@@ -19,6 +19,10 @@ PySide6で作った、GISデータ（N05 / SHP / GeoJSON）用の地図プレビ
   - GeoJSON
   - Turnout用 Overpass JSON風データ
   - **NIMBY Rails クリップボード形式 (`.nrclip`)** の直接書き出し (zstd圧縮 + wyhash_nrc1チェックサム自動計算)
+- **多言語対応 (i18n)**:
+  - 日本語と英語の表示切替に対応。
+  - アプリ左上のコンボボックスからリアルタイムで言語を切り替えられます。
+  - 実行ファイルと同階層の `localisation` フォルダ内の `ja.json`、`en.json` を編集することで、表示文言をビルドし直すことなく自由にカスタマイズ可能です。
 
 ## インストール
 
@@ -56,7 +60,7 @@ python nrclip_builder.py C:\path\to\N05-20_GML.zip
 
 ## 謝辞とライセンス (Credits & License)
 
-本プロジェクトは、Alex Sørlie 氏が開発した Rust 製ツール [Turnout](https://github.com/itsalex/Turnout) のデータ構造、チェックサムアルゴリズム、およびシリアライズロジックを参考に Python (PySide6) で再実装・機能拡張したものです。
+本プロジェクトは、Alex Sørlie 氏が開発した Rust 製ツール [Turnout](https://github.com/SuperManifolds/Turnout) のデータ構造、チェックサムアルゴリズム、およびシリアライズロジックを参考に Python (PySide6) で再実装・機能拡張したものです。
 
-- 元プロジェクト: [Turnout](https://github.com/itsalex/Turnout) (Copyright (c) 2025 Alex Sørlie, MIT License)
+- 元プロジェクト: [Turnout](https://github.com/SuperManifolds/Turnout) (Copyright (c) 2025 Alex Sørlie, MIT License)
 - 本ソフトウェアは MIT License の下で公開されています。詳細は `LICENSE` ファイルを参照してください。
