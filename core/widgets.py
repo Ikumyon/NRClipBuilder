@@ -48,16 +48,23 @@ class MapWidget(QWidget):
         self.last_geojson: Optional[dict[str, Any]] = None
         self.last_title: str = "NRClipBuilder"
         self.current_lang: str = "ja"
+        self.current_translation: Optional[dict[str, Any]] = None
 
-    def set_geojson(self, geojson: dict[str, Any], title: str, lang: str = "ja") -> None:
+    def set_geojson(self, geojson: dict[str, Any], title: str, lang: str = "ja", translation: dict[str, Any] = None) -> None:
         self.last_geojson = geojson
         self.last_title = title
         self.current_lang = lang
+        self.current_translation = translation
         self.reload_map()
 
     def reload_map(self) -> None:
         geojson = self.last_geojson if self.last_geojson is not None else {"type": "FeatureCollection", "features": []}
-        html_text = make_leaflet_html(geojson, title=self.last_title, lang=self.current_lang)
+        html_text = make_leaflet_html(
+            geojson,
+            title=self.last_title,
+            lang=self.current_lang,
+            translation=self.current_translation
+        )
         out = Path(tempfile.gettempdir()) / "n05_map_filter_exporter_preview.html"
         out.write_text(html_text, encoding="utf-8")
         self.last_html_path = out
@@ -68,8 +75,9 @@ class MapWidget(QWidget):
                 f"<p>地図プレビューHTMLを作成しました:</p><p><a href='{out.as_uri()}'>{html.escape(str(out))}</a></p>"
             )
 
-    def retranslate_map(self, lang: str) -> None:
+    def retranslate_map(self, lang: str, translation: dict[str, Any] = None) -> None:
         self.current_lang = lang
+        self.current_translation = translation
         self.reload_map()
 
 

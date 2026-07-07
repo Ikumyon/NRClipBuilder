@@ -300,7 +300,7 @@ class MainWindow(QMainWindow):
         self.update_info_label()
         
         if hasattr(self, "map_widget"):
-            self.map_widget.retranslate_map(self.current_lang.split("-")[0])
+            self.map_widget.retranslate_map(self.current_lang.split("-")[0], self.translation)
 
     def update_window_title(self) -> None:
         src_name = self.store.source_path.name if self.store.source_path else ""
@@ -665,7 +665,8 @@ class MainWindow(QMainWindow):
         self.map_widget.set_geojson(
             {"type": "FeatureCollection", "features": features},
             title=title,
-            lang=self.current_lang.split("-")[0]
+            lang=self.current_lang.split("-")[0],
+            translation=self.translation
         )
 
     def _refresh_table(self, features: list[dict[str, Any]]) -> None:

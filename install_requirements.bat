@@ -1,4 +1,4 @@
 @echo off
 cd /d "%~dp0"
-python -m pip install -r requirements.txt
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install_requirements.ps1"
 pause

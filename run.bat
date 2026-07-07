@@ -1,4 +1,4 @@
 @echo off
 cd /d "%~dp0"
-python nrclip_builder.py
-pause
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1"
+if %errorlevel% neq 0 pause

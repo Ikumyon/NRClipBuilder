@@ -5,16 +5,18 @@ from typing import Any
 APP_TITLE = "NRClipBuilder"
 
 
-def make_leaflet_html(geojson: dict[str, Any], title: str = APP_TITLE, lang: str = "ja") -> str:
+def make_leaflet_html(geojson: dict[str, Any], title: str = APP_TITLE, lang: str = "ja", translation: dict[str, Any] = None) -> str:
     gj = json.dumps(geojson, ensure_ascii=False, separators=(",", ":"))
     feature_count = len(geojson.get("features", []))
-    gsi_attr = "GSI Map" if lang == "en" else "国土地理院地図"
-    gsi_layer_name = "GSI Map" if lang == "en" else "国土地理院地図"
-    osm_layer_name = "OpenStreetMap"
-    history_layer_name = "History Bounds" if lang == "en" else "過去の出力履歴"
-    no_attr_text = "(No attributes)" if lang == "en" else "(属性なし)"
-    select_btn_text = "Select BBox" if lang == "en" else "範囲選択"
-    selecting_btn_text = "Selecting BBox (Drag on map)" if lang == "en" else "範囲選択中 (ドラッグして囲む)"
+    
+    t = translation or {}
+    gsi_attr = t.get("map_layer_gsi", "GSI Map" if lang == "en" else "国土地理院地図")
+    gsi_layer_name = t.get("map_layer_gsi", "GSI Map" if lang == "en" else "国土地理院地図")
+    osm_layer_name = t.get("map_layer_osm", "OpenStreetMap")
+    history_layer_name = t.get("map_layer_history", "History Bounds" if lang == "en" else "過去の出力履歴")
+    no_attr_text = t.get("map_no_attr", "(No attributes)" if lang == "en" else "(属性なし)")
+    select_btn_text = t.get("map_select_btn", "Select BBox" if lang == "en" else "範囲選択")
+    selecting_btn_text = t.get("map_select_btn_active", "Selecting BBox (Drag on map)" if lang == "en" else "範囲選択中 (ドラッグして囲む)")
 
     return f"""<!doctype html>
 <html lang="{lang}">
