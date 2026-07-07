@@ -241,7 +241,7 @@ def get_speed_limit(props: dict) -> float:
             pass
     return 0.0
 
-def geojson_to_nrclip_bytes(features: list[dict[str, Any]], name: str) -> bytes:
+def geojson_to_nrclip_bytes(features: list[dict[str, Any]], name: str, scale_x: float = 1.0, scale_y: float = 1.0) -> bytes:
     """Convert geojson features to NIMBY Rails .nrclip bytes."""
     track_nodes = []
     next_node_id = 1
@@ -313,8 +313,8 @@ def geojson_to_nrclip_bytes(features: list[dict[str, Any]], name: str) -> bytes:
         node_lat = merc_y_to_lat_rad(t['y'])
         node_lon = t['x'] / EARTH_RADIUS
         dx, dy = inverse_geodesic(center_lat, center_lon, node_lat, node_lon)
-        t['x'] = dx
-        t['y'] = dy
+        t['x'] = dx * scale_x
+        t['y'] = dy * scale_y
 
     name_hash = 0x001234567890
     for b in name.encode('utf-8'):

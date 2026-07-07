@@ -255,6 +255,42 @@
              </property>
             </widget>
            </item>
+           <!-- Scale adjustment Row -->
+           <item row="11" column="0">
+            <widget class="QLabel" name="label_scale">
+             <property name="text">
+              <string>出力倍率 X / Y</string>
+             </property>
+            </widget>
+           </item>
+           <item row="11" column="1">
+            <widget class="QWidget" name="scale_widget" native="true">
+             <layout class="QHBoxLayout" name="scale_layout">
+              <property name="leftMargin"><number>0</number></property>
+              <property name="topMargin"><number>0</number></property>
+              <property name="rightMargin"><number>0</number></property>
+              <property name="bottomMargin"><number>0</number></property>
+              <item>
+               <widget class="QDoubleSpinBox" name="scale_x_spin">
+                <property name="decimals"><number>4</number></property>
+                <property name="minimum"><double>0.1000</double></property>
+                <property name="maximum"><double>2.0000</double></property>
+                <property name="singleStep"><double>0.0001</double></property>
+                <property name="value"><double>1.0000</double></property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QDoubleSpinBox" name="scale_y_spin">
+                <property name="decimals"><number>4</number></property>
+                <property name="minimum"><double>0.1000</double></property>
+                <property name="maximum"><double>2.0000</double></property>
+                <property name="singleStep"><double>0.0001</double></property>
+                <property name="value"><double>1.0000</double></property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
           </layout>
          </widget>
         </item>

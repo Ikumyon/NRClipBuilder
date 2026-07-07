@@ -745,6 +745,7 @@ class MainWindow(QMainWindow):
         # BBox 関連の初期化とシグナル接続
         self.selected_bbox = None
         self.history_file = Path(__file__).parent / "bbox_history.json"
+        self.config_file = Path(__file__).parent / "app_config.json"
         self.history_data = []
 
         if HAS_WEBENGINE:
@@ -765,6 +766,7 @@ class MainWindow(QMainWindow):
         self.delete_history_btn.clicked.connect(self.delete_history)
 
         self.load_history_from_file()
+        self.load_config_from_file()
 
         # メニューアクション of 接続
         self.action_open.triggered.connect(self.open_file)
@@ -863,6 +865,128 @@ class MainWindow(QMainWindow):
                     return True
         return False
 
+    def get_intersection(self, p1: list[float], p2: list[float], bbox: tuple[float, float, float, float]) -> Optional[list[float]]:
+        xmin, ymin, xmax, ymax = bbox
+        x1, y1 = p1[0], p1[1]
+        x2, y2 = p2[0], p2[1]
+        t_candidates = []
+        if x2 != x1:
+            t = (xmin - x1) / (x2 - x1)
+            if 0 <= t <= 1:
+                y = y1 + t * (y2 - y1)
+                if ymin <= y <= ymax:
+                    t_candidates.append(t)
+            t = (xmax - x1) / (x2 - x1)
+            if 0 <= t <= 1:
+                y = y1 + t * (y2 - y1)
+                if ymin <= y <= ymax:
+                    t_candidates.append(t)
+        if y2 != y1:
+            t = (ymin - y1) / (y2 - y1)
+            if 0 <= t <= 1:
+                x = x1 + t * (x2 - x1)
+                if xmin <= x <= xmax:
+                    t_candidates.append(t)
+            t = (ymax - y1) / (y2 - y1)
+            if 0 <= t <= 1:
+                x = x1 + t * (x2 - x1)
+                if xmin <= x <= xmax:
+                    t_candidates.append(t)
+        if t_candidates:
+            best_t = min(t_candidates)
+            return [x1 + best_t * (x2 - x1), y1 + best_t * (y2 - y1)]
+        return None
+
+    def clip_line_to_bbox(self, line: list[list[float]], bbox: tuple[float, float, float, float]) -> list[list[list[float]]]:
+        xmin, ymin, xmax, ymax = bbox
+        clipped_lines = []
+        current_sub_line = []
+        def is_inside(pt):
+            return xmin <= pt[0] <= xmax and ymin <= pt[1] <= ymax
+        for i in range(len(line)):
+            pt = line[i]
+            if is_inside(pt):
+                if i > 0 and not is_inside(line[i - 1]):
+                    inter_pt = self.get_intersection(line[i - 1], pt, bbox)
+                    if inter_pt:
+                        current_sub_line.append(inter_pt)
+                current_sub_line.append(pt)
+            else:
+                if i > 0 and is_inside(line[i - 1]):
+                    inter_pt = self.get_intersection(line[i - 1], pt, bbox)
+                    if inter_pt:
+                        current_sub_line.append(inter_pt)
+                    if len(current_sub_line) >= 2:
+                        clipped_lines.append(current_sub_line)
+                    current_sub_line = []
+                elif i > 0:
+                    x1, y1 = line[i-1][0], line[i-1][1]
+                    x2, y2 = line[i][0], line[i][1]
+                    t_candidates = []
+                    if x2 != x1:
+                        for xm in (xmin, xmax):
+                            t = (xm - x1) / (x2 - x1)
+                            if 0 <= t <= 1:
+                                y = y1 + t * (y2 - y1)
+                                if ymin <= y <= ymax:
+                                    t_candidates.append(t)
+                    if y2 != y1:
+                        for ym in (ymin, ymax):
+                            t = (ym - y1) / (y2 - y1)
+                            if 0 <= t <= 1:
+                                x = x1 + t * (x2 - x1)
+                                if xmin <= x <= xmax:
+                                    t_candidates.append(t)
+                    t_candidates = sorted(list(set(t_candidates)))
+                    if len(t_candidates) >= 2:
+                        t1, t2 = t_candidates[0], t_candidates[1]
+                        pt1 = [x1 + t1 * (x2 - x1), y1 + t1 * (y2 - y1)]
+                        pt2 = [x1 + t2 * (x2 - x1), y1 + t2 * (y2 - y1)]
+                        clipped_lines.append([pt1, pt2])
+        if len(current_sub_line) >= 2:
+            clipped_lines.append(current_sub_line)
+        return [l for l in clipped_lines if len(l) >= 2]
+
+    def clip_geometry_to_bbox(self, geom: dict[str, Any], bbox: tuple[float, float, float, float]) -> Optional[dict[str, Any]]:
+        gtype = geom.get("type")
+        coords = geom.get("coordinates")
+        if not gtype or coords is None:
+            return None
+        if gtype == "LineString":
+            sub_lines = self.clip_line_to_bbox(coords, bbox)
+            if not sub_lines:
+                return None
+            if len(sub_lines) == 1:
+                return {"type": "LineString", "coordinates": sub_lines[0]}
+            else:
+                return {"type": "MultiLineString", "coordinates": sub_lines}
+        elif gtype == "MultiLineString":
+            all_sub_lines = []
+            for line in coords:
+                all_sub_lines.extend(self.clip_line_to_bbox(line, bbox))
+            if not all_sub_lines:
+                return None
+            return {"type": "MultiLineString", "coordinates": all_sub_lines}
+        elif gtype == "GeometryCollection":
+            clipped_geoms = []
+            for g in geom.get("geometries", []) or []:
+                cg = self.clip_geometry_to_bbox(g, bbox)
+                if cg:
+                    clipped_geoms.append(cg)
+            if not clipped_geoms:
+                return None
+            return {"type": "GeometryCollection", "geometries": clipped_geoms}
+        elif gtype == "Point":
+            xmin, ymin, xmax, ymax = bbox
+            if xmin <= coords[0] <= xmax and ymin <= coords[1] <= ymax:
+                return geom
+        elif gtype == "MultiPoint":
+            xmin, ymin, xmax, ymax = bbox
+            pts = [p for p in coords if xmin <= p[0] <= xmax and ymin <= p[1] <= ymax]
+            if pts:
+                return {"type": "MultiPoint", "coordinates": pts}
+        return None
+
     def on_use_bbox_changed(self, state: int) -> None:
         if self.use_bbox_check.isChecked():
             self.on_coordinate_edited()
@@ -956,6 +1080,53 @@ class MainWindow(QMainWindow):
         self.use_bbox_check.setChecked(False)
         if HAS_WEBENGINE:
             self.map_widget.web.page().runJavaScript("window.clearActiveBounds();")
+
+    def save_config_to_file(self) -> None:
+        config = {
+            "keywords": self.keyword_edit.text(),
+            "fields": self.field_edit.text(),
+            "exclude": self.exclude_edit.text(),
+            "regex": self.regex_check.isChecked(),
+            "match_all": self.and_radio.isChecked(),
+            "line_only": self.line_only_check.isChecked(),
+            "use_bbox": self.use_bbox_check.isChecked(),
+            "bbox": self.selected_bbox,
+            "scale_x": self.scale_x_spin.value(),
+            "scale_y": self.scale_y_spin.value(),
+        }
+        try:
+            self.config_file.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
+    def load_config_from_file(self) -> None:
+        if not self.config_file.exists():
+            return
+        try:
+            config = json.loads(self.config_file.read_text(encoding="utf-8"))
+            self.keyword_edit.setText(config.get("keywords", ""))
+            self.field_edit.setText(config.get("fields", ""))
+            self.exclude_edit.setText(config.get("exclude", ""))
+            self.regex_check.setChecked(config.get("regex", False))
+            if config.get("match_all", True):
+                self.and_radio.setChecked(True)
+            else:
+                self.or_radio.setChecked(True)
+            self.line_only_check.setChecked(config.get("line_only", False))
+            
+            bbox = config.get("bbox")
+            if bbox and len(bbox) == 4:
+                self.selected_bbox = tuple(bbox)
+                self.min_lon_edit.setText(f"{bbox[0]:.7f}")
+                self.min_lat_edit.setText(f"{bbox[1]:.7f}")
+                self.max_lon_edit.setText(f"{bbox[2]:.7f}")
+                self.max_lat_edit.setText(f"{bbox[3]:.7f}")
+            
+            self.use_bbox_check.setChecked(config.get("use_bbox", False))
+            self.scale_x_spin.setValue(config.get("scale_x", 1.0))
+            self.scale_y_spin.setValue(config.get("scale_y", 1.0))
+        except Exception:
+            pass
 
     def load_history_from_file(self) -> None:
         self.history_data = []
@@ -1078,7 +1249,13 @@ class MainWindow(QMainWindow):
         if not self.filtered:
             QMessageBox.information(self, "出力", "出力対象がありません。")
             return
-        export_features = [f for f in self.filtered if self.feature_intersects_bbox(f, self.selected_bbox)]
+        export_features = []
+        for f in self.filtered:
+            clipped_geom = self.clip_geometry_to_bbox(f.get("geometry") or {}, self.selected_bbox)
+            if clipped_geom:
+                new_feat = f.copy()
+                new_feat["geometry"] = clipped_geom
+                export_features.append(new_feat)
         if not export_features:
             QMessageBox.information(self, "出力", "選択された出力範囲内にデータがありません。")
             return
@@ -1107,7 +1284,13 @@ class MainWindow(QMainWindow):
         if not self.filtered:
             QMessageBox.information(self, "出力", "出力対象がありません。")
             return
-        export_features = [f for f in self.filtered if self.feature_intersects_bbox(f, self.selected_bbox)]
+        export_features = []
+        for f in self.filtered:
+            clipped_geom = self.clip_geometry_to_bbox(f.get("geometry") or {}, self.selected_bbox)
+            if clipped_geom:
+                new_feat = f.copy()
+                new_feat["geometry"] = clipped_geom
+                export_features.append(new_feat)
         line_features = [f for f in export_features if self.geometry_is_line(f.get("geometry") or {})]
         if not line_features:
             QMessageBox.information(self, "出力", "選択された出力範囲内に線データがありません。")
@@ -1141,7 +1324,13 @@ class MainWindow(QMainWindow):
         if not self.filtered:
             QMessageBox.information(self, "出力", "出力対象がありません。")
             return
-        export_features = [f for f in self.filtered if self.feature_intersects_bbox(f, self.selected_bbox)]
+        export_features = []
+        for f in self.filtered:
+            clipped_geom = self.clip_geometry_to_bbox(f.get("geometry") or {}, self.selected_bbox)
+            if clipped_geom:
+                new_feat = f.copy()
+                new_feat["geometry"] = clipped_geom
+                export_features.append(new_feat)
         line_features = [f for f in export_features if self.geometry_is_line(f.get("geometry") or {})]
         if not line_features:
             QMessageBox.information(self, "出力", "選択された出力範囲内に線データがありません。")
@@ -1158,7 +1347,9 @@ class MainWindow(QMainWindow):
         path = Path(path_str)
         try:
             name = path.stem
-            data = geojson_to_nrclip_bytes(line_features, name)
+            scale_x = self.scale_x_spin.value()
+            scale_y = self.scale_y_spin.value()
+            data = geojson_to_nrclip_bytes(line_features, name, scale_x, scale_y)
             path.write_bytes(data)
             self.last_output_dir = path.parent
             self.add_to_history(name, self.selected_bbox)
@@ -1175,6 +1366,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "プレビュー", "まだプレビューHTMLがありません。")
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
+        self.save_config_to_file()
         self.store.cleanup()
         super().closeEvent(event)
 
