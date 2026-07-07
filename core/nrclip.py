@@ -1,3 +1,4 @@
+import math
 import struct
 import zstandard as zstd
 from typing import Any
@@ -7,6 +8,186 @@ from core.wyhash import wyhash_nrc1_checksum
 from core.geojson import iter_lines_from_geometry
 
 MODEL_VERSION = 226
+
+# --- Hobby Spline Algorithm & Simplification Implementation ---
+
+class BezierSegment:
+    def __init__(self, p0: tuple[float, float], c0: tuple[float, float], c1: tuple[float, float], p1: tuple[float, float]):
+        self.p0 = p0
+        self.c0 = c0
+        self.c1 = c1
+        self.p1 = p1
+
+# Hobby's rho velocity parameter: `(3 - √5) / 2` ≈ 0.38196601125
+DELTA = (3.0 - math.sqrt(5.0)) / 2.0
+EPSILON = 1e-10
+
+def normalize_angle(a: float) -> float:
+    while a > math.pi:
+        a -= 2.0 * math.pi
+    while a < -math.pi:
+        a += 2.0 * math.pi
+    return a
+
+def rotate_unit(angle: float) -> tuple[float, float]:
+    return math.cos(angle), math.sin(angle)
+
+def hobby_rho(alpha: float, beta: float) -> tuple[float, float]:
+    sa, sb = math.sin(alpha), math.sin(beta)
+    ca, cb = math.cos(alpha), math.cos(beta)
+
+    a = sa - sb / 16.0
+    b = sb - sa / 16.0
+    c = ca - cb
+    f = math.sqrt(2.0) * a * b * c
+
+    denom_a = 3.0 * (1.0 + (1.0 - DELTA) * ca + DELTA * cb)
+    denom_b = 3.0 * (1.0 + (1.0 - DELTA) * cb + DELTA * ca)
+
+    rho_a = (2.0 + f) / denom_a if abs(denom_a) > EPSILON else 1.0 / 3.0
+    rho_b = (2.0 - f) / denom_b if abs(denom_b) > EPSILON else 1.0 / 3.0
+
+    return max(rho_a, 0.0), max(rho_b, 0.0)
+
+def bezier_point(seg: BezierSegment, t: float) -> tuple[float, float]:
+    t2 = t * t
+    t3 = t2 * t
+    mt = 1.0 - t
+    mt2 = mt * mt
+    mt3 = mt2 * mt
+    x = mt3 * seg.p0[0] + 3.0 * mt2 * t * seg.c0[0] + 3.0 * mt * t2 * seg.c1[0] + t3 * seg.p1[0]
+    y = mt3 * seg.p0[1] + 3.0 * mt2 * t * seg.c0[1] + 3.0 * mt * t2 * seg.c1[1] + t3 * seg.p1[1]
+    return x, y
+
+def hobby_spline(points: list[tuple[float, float]]) -> list[BezierSegment]:
+    if len(points) < 2:
+        return []
+    if len(points) == 2:
+        x0, y0 = points[0]
+        x1, y1 = points[1]
+        angle = math.atan2(y1 - y0, x1 - x0)
+        d = math.hypot(x1 - x0, y1 - y0) / 3.0
+        ca, sa = math.cos(angle), math.sin(angle)
+        return [BezierSegment(
+            p0=(x0, y0),
+            c0=(x0 + ca * d, y0 + sa * d),
+            c1=(x1 - ca * d, y1 - sa * d),
+            p1=(x1, y1)
+        )]
+
+    n = len(points)
+    chords = []
+    chord_lens = []
+    for i in range(n - 1):
+        dx = points[i + 1][0] - points[i][0]
+        dy = points[i + 1][1] - points[i][1]
+        length = max(math.hypot(dx, dy), EPSILON)
+        chords.append((dx, dy))
+        chord_lens.append(length)
+
+    angles = []
+    for i in range(n):
+        if i == 0:
+            angle = math.atan2(chords[0][1], chords[0][0])
+        elif i == n - 1:
+            angle = math.atan2(chords[n - 2][1], chords[n - 2][0])
+        else:
+            in_angle = math.atan2(chords[i - 1][1], chords[i - 1][0])
+            out_angle = math.atan2(chords[i][1], chords[i][0])
+            turn = normalize_angle(out_angle - in_angle)
+            angle = in_angle + turn / 2.0
+        angles.append(angle)
+
+    segments = []
+    for i in range(n - 1):
+        chord_angle = math.atan2(chords[i][1], chords[i][0])
+        d = chord_lens[i]
+        alpha = normalize_angle(angles[i] - chord_angle)
+        beta = normalize_angle(chord_angle - angles[i + 1])
+        rho_a, rho_b = hobby_rho(alpha, beta)
+        c0_dx, c0_dy = rotate_unit(chord_angle + alpha)
+        c1_dx, c1_dy = rotate_unit(chord_angle - beta)
+        segments.append(BezierSegment(
+            p0=points[i],
+            c0=(points[i][0] + rho_a * d * c0_dx, points[i][1] + rho_a * d * c0_dy),
+            c1=(points[i + 1][0] - rho_b * d * c1_dx, points[i + 1][1] - rho_b * d * c1_dy),
+            p1=points[i + 1]
+        ))
+    return segments
+
+def keep_near_junction_endpoints(
+    merc_coords: list[tuple[float, float]],
+    keep: list[bool],
+    orig_coords: list[tuple[float, float]],
+    junction_coords: set[tuple[float, float]],
+    junction_spacing: float
+) -> None:
+    if len(merc_coords) <= 2 or junction_spacing <= 0.0:
+        return
+
+    start_key = (round(orig_coords[0][0], 7), round(orig_coords[0][1], 7))
+    start_is_junction = start_key in junction_coords
+
+    end_key = (round(orig_coords[-1][0], 7), round(orig_coords[-1][1], 7))
+    end_is_junction = end_key in junction_coords
+
+    spacing_sq = junction_spacing ** 2
+
+    if start_is_junction:
+        for i in range(1, len(merc_coords) - 1):
+            dx = merc_coords[i][0] - merc_coords[0][0]
+            dy = merc_coords[i][1] - merc_coords[0][1]
+            if dx * dx + dy * dy >= spacing_sq:
+                keep[i] = True
+                break
+
+    if end_is_junction:
+        last = len(merc_coords) - 1
+        for i in range(last - 1, 0, -1):
+            dx = merc_coords[i][0] - merc_coords[last][0]
+            dy = merc_coords[i][1] - merc_coords[last][1]
+            if dx * dx + dy * dy >= spacing_sq:
+                keep[i] = True
+                break
+
+def spline_simplify(coords: list[tuple[float, float]], keep: list[bool], spline_tolerance: float) -> None:
+    for _ in range(20):
+        kept_pts = [coords[i] for i in range(len(coords)) if keep[i]]
+        kept_idx = [i for i in range(len(coords)) if keep[i]]
+
+        if len(kept_pts) < 2:
+            break
+
+        segs = hobby_spline(kept_pts)
+        added = False
+
+        for si, seg in enumerate(segs):
+            orig_start = kept_idx[si]
+            orig_end = kept_idx[si + 1]
+            if orig_end - orig_start <= 1:
+                continue
+
+            worst_dev = 0.0
+            worst_orig = orig_start
+            for oi in range(orig_start + 1, orig_end):
+                ox, oy = coords[oi]
+                best_d = float("inf")
+                for s in range(33):
+                    t = s / 32.0
+                    pt = bezier_point(seg, t)
+                    d = math.hypot(ox - pt[0], oy - pt[1])
+                    if d < best_d:
+                        best_d = d
+                if best_d > worst_dev:
+                    worst_dev = best_d
+                    worst_orig = oi
+
+            if worst_dev > spline_tolerance:
+                keep[worst_orig] = True
+                added = True
+
+        if not added:
+            break
 
 def encode_nrc1_container(payload: bytes, version: int = MODEL_VERSION) -> bytes:
     """Compress payload and package with NRC1 header + checksum."""
@@ -241,11 +422,17 @@ def get_speed_limit(props: dict) -> float:
             pass
     return 0.0
 
-def geojson_to_nrclip_bytes(features: list[dict[str, Any]], name: str, scale_x: float = 1.0, scale_y: float = 1.0) -> bytes:
-    """Convert geojson features to NIMBY Rails .nrclip bytes."""
-    track_nodes = []
-    next_node_id = 1
-    
+def geojson_to_nrclip_bytes(
+    features: list[dict[str, Any]],
+    name: str,
+    scale_x: float = 1.0,
+    scale_y: float = 1.0,
+    spline_tolerance: float = 5.0,
+    junction_spacing: float = 30.0
+) -> bytes:
+    """Convert geojson features to NIMBY Rails .nrclip bytes with Hobby Spline simplification."""
+    # 1. 路線データを routes リストとして集約
+    routes = []
     for feat in features:
         props = feat.get('properties') or {}
         track_type = get_track_type(props)
@@ -257,34 +444,90 @@ def geojson_to_nrclip_bytes(features: list[dict[str, Any]], name: str, scale_x: 
             pass
         
         for line in iter_lines_from_geometry(feat.get('geometry') or {}):
-            line_nodes = []
+            valid_line = []
             for c in line:
                 if not isinstance(c, (list, tuple)) or len(c) < 2:
                     continue
-                lon = float(c[0])
-                lat = float(c[1])
-                x, y = latlon_to_mercator(lat, lon)
+                valid_line.append((float(c[0]), float(c[1])))  # (lon, lat)
+            if len(valid_line) >= 2:
+                routes.append({
+                    'coords': valid_line,
+                    'track_type': track_type,
+                    'speed': speed,
+                    'layer': layer
+                })
+
+    if not routes:
+        raise ValueError("トラックノードが作成されませんでした。")
+
+    # 2. ジャンクション（共有ノード）の検出
+    coord_counts = {}
+    for ri, r in enumerate(routes):
+        for pi, pt in enumerate(r['coords']):
+            key = (round(pt[0], 7), round(pt[1], 7))
+            if key not in coord_counts:
+                coord_counts[key] = []
+            coord_counts[key].append((ri, pi))
+            
+    junction_coords = set()
+    for key, refs in coord_counts.items():
+        unique_routes = set(ri for ri, pi in refs)
+        if len(unique_routes) >= 2 or len(refs) >= 2:
+            junction_coords.add(key)
+
+    # 3. 各 route の簡素化 (spline_simplify)
+    for r in routes:
+        coords = r['coords']
+        # メルカトル座標の計算
+        merc_coords = []
+        for lon, lat in coords:
+            mx, my = latlon_to_mercator(lat, lon)
+            merc_coords.append((mx, my))
+            
+        keep = [False] * len(coords)
+        keep[0] = True
+        keep[-1] = True
+        
+        for i, pt in enumerate(coords):
+            key = (round(pt[0], 7), round(pt[1], 7))
+            if key in junction_coords:
+                keep[i] = True
                 
-                node = {
-                    'node_id': next_node_id, 'node_type': 1, 'track_type': track_type,
-                    'layer': layer, 'winding': 1, 'prev_node': 0, 'next_node': 0, 'group_id': 0,
-                    'user_max_speed': speed, 'x': x, 'y': y, 'raw_lon': lon, 'raw_lat': lat,
-                    'user_tangent_delta': 0.0, 'next_spline_t': 0.5, 'station_group_id': 0,
-                    'blueprint': 0, 'name': '', 'station_platform_auto_name': 0, 'straight': 0,
-                    'tangential': 1, 'limited_shapes': 0, 'attached_to_id': 0, 'attached_to_t': 0.0,
-                    'attached_to_direction': 0, 'attached_by': [],
-                }
-                line_nodes.append(node)
-                track_nodes.append(node)
-                next_node_id += 1
-                
-            for i in range(len(line_nodes)):
-                if i > 0: line_nodes[i]['prev_node'] = line_nodes[i - 1]['node_id']
-                if i < len(line_nodes) - 1: line_nodes[i]['next_node'] = line_nodes[i + 1]['node_id']
+        keep_near_junction_endpoints(merc_coords, keep, coords, junction_coords, junction_spacing)
+        spline_simplify(merc_coords, keep, spline_tolerance)
+        
+        # 簡素化された座標リスト
+        r['simplified_coords'] = [coords[i] for i in range(len(keep)) if keep[i]]
+
+    # 4. トラックノードの構築
+    track_nodes = []
+    next_node_id = 1
+    
+    for r in routes:
+        line_nodes = []
+        for lon, lat in r['simplified_coords']:
+            x, y = latlon_to_mercator(lat, lon)
+            node = {
+                'node_id': next_node_id, 'node_type': 1, 'track_type': r['track_type'],
+                'layer': r['layer'], 'winding': 1, 'prev_node': 0, 'next_node': 0, 'group_id': 0,
+                'user_max_speed': r['speed'], 'x': x, 'y': y, 'raw_lon': lon, 'raw_lat': lat,
+                'user_tangent_delta': 0.0, 'next_spline_t': 0.5, 'station_group_id': 0,
+                'blueprint': 0, 'name': '', 'station_platform_auto_name': 0, 'straight': 0,
+                'tangential': 1, 'limited_shapes': 0, 'attached_to_id': 0, 'attached_to_t': 0.0,
+                'attached_to_direction': 0, 'attached_by': [],
+            }
+            line_nodes.append(node)
+            track_nodes.append(node)
+            next_node_id += 1
+            
+        for i in range(len(line_nodes)):
+            if i > 0: line_nodes[i]['prev_node'] = line_nodes[i - 1]['node_id']
+            if i < len(line_nodes) - 1: line_nodes[i]['next_node'] = line_nodes[i + 1]['node_id']
 
     if not track_nodes:
         raise ValueError("トラックノードが作成されませんでした。")
 
+    # 5. 合流・接続処理
     coord_to_gids = {}
     for node in track_nodes:
         key = (round(node['raw_lon'], 7), round(node['raw_lat'], 7))
@@ -304,6 +547,7 @@ def geojson_to_nrclip_bytes(features: list[dict[str, Any]], name: str, scale_x: 
                 child_node['attached_to_direction'] = 1
                 parent_node['attached_by'].append(child_id)
 
+    # 6. 中心点を基準としたメートル平面座標系 (x, y) への変換
     cx = sum(t['x'] for t in track_nodes) / len(track_nodes)
     cy = sum(t['y'] for t in track_nodes) / len(track_nodes)
     center_lat = merc_y_to_lat_rad(cy)

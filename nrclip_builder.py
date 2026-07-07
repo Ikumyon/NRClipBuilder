@@ -275,6 +275,8 @@ class MainWindow(QMainWindow):
         self.max_lat_edit.setPlaceholderText(self.tr_msg("max_lat_placeholder"))
         self.clear_bbox_btn.setText(self.tr_msg("clear_bbox_btn"))
         self.label_scale.setText(self.tr_msg("label_scale"))
+        self.label_spline_tolerance.setText(self.tr_msg("label_spline_tolerance"))
+        self.label_junction_spacing.setText(self.tr_msg("label_junction_spacing"))
         self.info_group.setTitle(self.tr_msg("info_group"))
         self.log.setPlaceholderText(self.tr_msg("log_placeholder"))
         
@@ -501,6 +503,8 @@ class MainWindow(QMainWindow):
             "bbox": self.selected_bbox,
             "scale_x": self.scale_x_spin.value(),
             "scale_y": self.scale_y_spin.value(),
+            "spline_tolerance": self.spline_tolerance_spin.value(),
+            "junction_spacing": self.junction_spacing_spin.value(),
         }
         try:
             self.config_file.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -533,6 +537,8 @@ class MainWindow(QMainWindow):
             self.use_bbox_check.setChecked(config.get("use_bbox", False))
             self.scale_x_spin.setValue(config.get("scale_x", 1.0))
             self.scale_y_spin.setValue(config.get("scale_y", 1.0))
+            self.spline_tolerance_spin.setValue(config.get("spline_tolerance", 5.0))
+            self.junction_spacing_spin.setValue(config.get("junction_spacing", 30.0))
         except Exception:
             pass
 
@@ -795,7 +801,13 @@ class MainWindow(QMainWindow):
             name = path.stem
             scale_x = self.scale_x_spin.value()
             scale_y = self.scale_y_spin.value()
-            data = geojson_to_nrclip_bytes(line_features, name, scale_x, scale_y)
+            spline_tolerance = self.spline_tolerance_spin.value()
+            junction_spacing = self.junction_spacing_spin.value()
+            data = geojson_to_nrclip_bytes(
+                line_features, name, scale_x, scale_y,
+                spline_tolerance=spline_tolerance,
+                junction_spacing=junction_spacing
+            )
             path.write_bytes(data)
             self.last_output_dir = path.parent
             self.add_to_history(name, self.selected_bbox)

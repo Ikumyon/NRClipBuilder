@@ -24,6 +24,8 @@
   "max_lat_placeholder": "最大緯度",
   "clear_bbox_btn": "範囲クリア",
   "label_scale": "出力倍率 X / Y",
+  "label_spline_tolerance": "近似許容誤差 (m)",
+  "label_junction_spacing": "分岐点保護範囲 (m)",
   "info_group": "読み込み情報",
   "info_label_empty": "未読み込み",
   "info_label_format": "元ファイル: {src}\n全件: {total:,}\n抽出: {filtered:,}\nフィールド数: {fields}\n{crs}",
