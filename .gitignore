@@ -5,6 +5,8 @@ __pycache__/
 .DS_Store
 app_config.json
 bbox_history.json
+build
+dist
 
 # Virtual Environment
 .venv/
