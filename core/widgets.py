@@ -49,6 +49,12 @@ class MapWidget(QWidget):
         self.last_title: str = "NRClipBuilder"
         self.current_lang: str = "ja"
         self.current_translation: Optional[dict[str, Any]] = None
+        self.tile_url: str = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+        self.tile_attribution: str = "&copy; OpenStreetMap contributors"
+
+    def set_tile_config(self, tile_url: str, tile_attribution: str) -> None:
+        self.tile_url = tile_url
+        self.tile_attribution = tile_attribution
 
     def set_geojson(self, geojson: dict[str, Any], title: str, lang: str = "ja", translation: dict[str, Any] = None) -> None:
         self.last_geojson = geojson
@@ -63,7 +69,9 @@ class MapWidget(QWidget):
             geojson,
             title=self.last_title,
             lang=self.current_lang,
-            translation=self.current_translation
+            translation=self.current_translation,
+            tile_url=self.tile_url,
+            tile_attribution=self.tile_attribution
         )
         out = Path(tempfile.gettempdir()) / "n05_map_filter_exporter_preview.html"
         out.write_text(html_text, encoding="utf-8")

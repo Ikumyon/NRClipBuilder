@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt, QFile, QLocale
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -22,6 +23,11 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QTableWidgetItem,
+    QDialog,
+    QFormLayout,
+    QLineEdit,
+    QDialogButtonBox,
+    QVBoxLayout,
 )
 
 from core.geojson import geojson_to_overpass
@@ -58,6 +64,56 @@ def get_executable_dir() -> Path:
     return Path(__file__).parent
 
 
+class AddLayerDialog(QDialog):
+    def __init__(self, parent=None, translation=None):
+        super().__init__(parent)
+        self.translation = translation or {}
+        self.setWindowTitle(self.tr_msg("dialog_add_layer_title", "レイヤーを追加"))
+        self.resize(400, 200)
+
+        layout = QVBoxLayout(self)
+        form = QFormLayout()
+
+        self.name_edit = QLineEdit(self)
+        self.name_edit.setPlaceholderText(self.tr_msg("dialog_layer_name_placeholder", "例: 国土地理院地図"))
+        self.url_edit = QLineEdit(self)
+        self.url_edit.setPlaceholderText(self.tr_msg("dialog_layer_url_placeholder", "例: https://example.com/{z}/{x}/{y}.png"))
+        self.attr_edit = QLineEdit(self)
+        self.attr_edit.setPlaceholderText(self.tr_msg("dialog_layer_attr_placeholder", "例: &copy; Map providers"))
+
+        form.addRow(self.tr_msg("dialog_label_layer_name", "レイヤー名"), self.name_edit)
+        form.addRow(self.tr_msg("dialog_label_layer_url", "タイルURL"), self.url_edit)
+        form.addRow(self.tr_msg("dialog_label_layer_attr", "著作権表記"), self.attr_edit)
+        layout.addLayout(form)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def tr_msg(self, key: str, fallback: str) -> str:
+        val = self.translation.get(key, fallback)
+        return val if val else fallback
+
+    def accept(self):
+        name = self.name_edit.text().strip()
+        url = self.url_edit.text().strip()
+        if not name or not url:
+            QMessageBox.warning(self, self.tr_msg("msg_validation_error", "警告"), self.tr_msg("msg_validation_empty", "名前とURLを入力してください。"))
+            return
+        if not all(p in url for p in ["{z}", "{x}", "{y}"]):
+            QMessageBox.warning(self, self.tr_msg("msg_validation_error", "警告"), self.tr_msg("msg_validation_invalid_url", "タイルURLには {z}, {x}, {y} のプレースホルダーを含める必要があります。"))
+            return
+        super().accept()
+
+    def get_data(self) -> tuple[str, str, str]:
+        return (
+            self.name_edit.text().strip(),
+            self.url_edit.text().strip(),
+            self.attr_edit.text().strip()
+        )
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -67,6 +123,9 @@ class MainWindow(QMainWindow):
 
         # UIのロード
         loader = UiLoader(self)
+        icon_path = get_resource_path("icon.ico")
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
         ui_path = get_resource_path("ui/main_window.ui")
         ui_file = QFile(str(ui_path))
         if not ui_file.open(QFile.ReadOnly):
@@ -117,8 +176,15 @@ class MainWindow(QMainWindow):
 
         # BBox 関連の初期化とシグナル接続
         self.selected_bbox = None
+        self.map_loaded = False
         self.history_file = get_executable_dir() / "bbox_history.json"
         self.history_data = []
+
+        # 背景地図の初期化
+        self.custom_layers: list[dict[str, str]] = []
+        self.base_map_combo.addItem("OpenStreetMap (OSM)")
+        self.base_map_combo.currentIndexChanged.connect(self.on_base_map_changed)
+        self.add_layer_btn.clicked.connect(self.on_add_layer_clicked)
 
         if HAS_WEBENGINE:
             self.map_widget.web.titleChanged.connect(self.on_title_changed)
@@ -150,7 +216,6 @@ class MainWindow(QMainWindow):
 
         # 初期ローカライズの適用
         self.retranslate_ui()
-        self.info_label.setText(self.tr_msg("info_label_empty"))
 
         # ステータスバーと初期化
         self.statusBar().showMessage(self.tr_msg("msg_select_file"))
@@ -280,7 +345,9 @@ class MainWindow(QMainWindow):
         self.label_junction_spacing.setText(self.tr_msg("label_junction_spacing"))
         self.label_max_spacing.setText(self.tr_msg("label_max_spacing"))
         self.label_straight_tolerance.setText(self.tr_msg("label_straight_tolerance"))
-        self.info_group.setTitle(self.tr_msg("info_group"))
+        self.map_group.setTitle(self.tr_msg("map_group"))
+        self.label_base_map.setText(self.tr_msg("label_base_map"))
+        self.add_layer_btn.setText(self.tr_msg("add_layer_btn"))
         self.log.setPlaceholderText(self.tr_msg("log_placeholder"))
         
         self.tabs.setTabText(0, self.tr_msg("tab_map"))
@@ -302,7 +369,6 @@ class MainWindow(QMainWindow):
             self.history_table.setHorizontalHeaderLabels(headers)
         
         self.update_window_title()
-        self.update_info_label()
         
         if hasattr(self, "map_widget"):
             self.map_widget.retranslate_map(self.current_lang.split("-")[0], self.translation)
@@ -354,30 +420,11 @@ class MainWindow(QMainWindow):
                 self.log_msg(self.tr_msg("msg_fields").format(fields=fields_str))
             if self.store.crs_note:
                 self.log_msg(self.store.crs_note)
-            self.update_info_label()
             self.apply_filter()
         except Exception as exc:
             QApplication.restoreOverrideCursor()
             self.log_msg(self.tr_msg("dialog_error") + str(exc))
             QMessageBox.critical(self, self.tr_msg("msg_load_error_title"), f"{exc}\n\n{traceback.format_exc()}")
-
-    def update_info_label(self) -> None:
-        if not hasattr(self, "translation") or not self.translation:
-            return
-        if not self.store.features and not self.store.source_path:
-            self.info_label.setText(self.tr_msg("info_label_empty"))
-            return
-        src = self.store.source_path or Path("-")
-        fmt = self.tr_msg("info_label_format")
-        self.info_label.setText(
-            fmt.format(
-                src=src,
-                total=len(self.store.features),
-                filtered=len(self.filtered),
-                fields=len(self.store.fields),
-                crs=self.store.crs_note
-            )
-        )
 
     def apply_filter(self) -> None:
         try:
@@ -393,11 +440,55 @@ class MainWindow(QMainWindow):
                 exclude_text=self.exclude_edit.text(),
             )
             self.log_msg(self.tr_msg("msg_filtered_count").format(filtered=len(self.filtered), total=len(self.store.features)))
-            self.update_info_label()
             self._refresh_map(self.filtered)
             self._refresh_table(self.filtered)
         except Exception as exc:
             QMessageBox.critical(self, self.tr_msg("msg_filter_error_title"), f"{exc}\n\n{traceback.format_exc()}")
+
+    def on_base_map_changed(self, index: int) -> None:
+        self.apply_active_map_layer()
+        self.save_config_to_file()
+
+    def apply_active_map_layer(self) -> None:
+        if self.base_map_combo.currentIndex() == 0:
+            url = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attr = "&copy; OpenStreetMap contributors"
+        else:
+            idx = self.base_map_combo.currentIndex() - 1
+            if 0 <= idx < len(self.custom_layers):
+                layer = self.custom_layers[idx]
+                url = layer.get("url", "")
+                attr = layer.get("attribution", "")
+            else:
+                return
+        self.map_widget.set_tile_config(url, attr)
+        self.map_widget.reload_map()
+
+    def on_add_layer_clicked(self) -> None:
+        dialog = AddLayerDialog(self, self.translation)
+        if dialog.exec() == QDialog.Accepted:
+            name, url, attr = dialog.get_data()
+            existing_idx = -1
+            for i, layer in enumerate(self.custom_layers):
+                if layer.get("name") == name:
+                    existing_idx = i
+                    break
+            
+            layer_data = {"name": name, "url": url, "attribution": attr}
+            if existing_idx >= 0:
+                self.custom_layers[existing_idx] = layer_data
+            else:
+                self.custom_layers.append(layer_data)
+                self.base_map_combo.addItem(name)
+            
+            self.base_map_combo.blockSignals(True)
+            idx = self.base_map_combo.findText(name)
+            if idx >= 0:
+                self.base_map_combo.setCurrentIndex(idx)
+            self.base_map_combo.blockSignals(False)
+            
+            self.apply_active_map_layer()
+            self.save_config_to_file()
 
     def on_use_bbox_changed(self, state: int) -> None:
         if self.use_bbox_check.isChecked():
@@ -408,6 +499,7 @@ class MainWindow(QMainWindow):
 
     def on_map_load_finished(self, ok: bool) -> None:
         if ok:
+            self.map_loaded = True
             self.update_map_history_bboxes()
             self.update_map_active_bbox()
 
@@ -424,6 +516,8 @@ class MainWindow(QMainWindow):
             pass
 
     def update_map_active_bbox(self) -> None:
+        if not getattr(self, "map_loaded", False):
+            return
         if self.selected_bbox:
             w, s, e, n = self.selected_bbox
             if HAS_WEBENGINE:
@@ -433,6 +527,8 @@ class MainWindow(QMainWindow):
                 self.map_widget.web.page().runJavaScript("window.clearActiveBounds();")
 
     def update_map_history_bboxes(self) -> None:
+        if not getattr(self, "map_loaded", False):
+            return
         if not HAS_WEBENGINE:
             return
         page = self.map_widget.web.page()
@@ -510,6 +606,8 @@ class MainWindow(QMainWindow):
             "junction_spacing": self.junction_spacing_spin.value(),
             "max_spacing": self.max_spacing_spin.value(),
             "straight_tolerance": self.straight_tolerance_spin.value(),
+            "custom_layers": self.custom_layers,
+            "active_layer": self.base_map_combo.currentText(),
         }
         try:
             self.config_file.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -546,6 +644,26 @@ class MainWindow(QMainWindow):
             self.junction_spacing_spin.setValue(config.get("junction_spacing", 30.0))
             self.max_spacing_spin.setValue(config.get("max_spacing", 200.0))
             self.straight_tolerance_spin.setValue(config.get("straight_tolerance", 0.5))
+            
+            # Tile custom layers configuration
+            custom_layers = config.get("custom_layers", [])
+            self.custom_layers = custom_layers
+            
+            self.base_map_combo.blockSignals(True)
+            self.base_map_combo.clear()
+            self.base_map_combo.addItem("OpenStreetMap (OSM)")
+            for layer in self.custom_layers:
+                self.base_map_combo.addItem(layer.get("name", ""))
+            
+            active_layer = config.get("active_layer", "OpenStreetMap (OSM)")
+            index = self.base_map_combo.findText(active_layer)
+            if index >= 0:
+                self.base_map_combo.setCurrentIndex(index)
+            else:
+                self.base_map_combo.setCurrentIndex(0)
+            self.base_map_combo.blockSignals(False)
+            
+            self.apply_active_map_layer()
         except Exception:
             pass
 
@@ -841,6 +959,14 @@ class MainWindow(QMainWindow):
 
 
 def main() -> int:
+    if sys.platform == "win32":
+        import ctypes
+        try:
+            myappid = "Ikumyon.NRClipBuilder.Version1"
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        except Exception:
+            pass
+
     app = QApplication(sys.argv)
     app.setApplicationName(APP_TITLE)
     win = MainWindow()

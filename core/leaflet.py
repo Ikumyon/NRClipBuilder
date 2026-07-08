@@ -5,7 +5,14 @@ from typing import Any
 APP_TITLE = "NRClipBuilder"
 
 
-def make_leaflet_html(geojson: dict[str, Any], title: str = APP_TITLE, lang: str = "ja", translation: dict[str, Any] = None) -> str:
+def make_leaflet_html(
+    geojson: dict[str, Any],
+    title: str = APP_TITLE,
+    lang: str = "ja",
+    translation: dict[str, Any] = None,
+    tile_url: str = "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    tile_attribution: str = "&copy; OpenStreetMap contributors"
+) -> str:
     gj = json.dumps(geojson, ensure_ascii=False, separators=(",", ":"))
     feature_count = len(geojson.get("features", []))
     
@@ -38,6 +45,16 @@ def make_leaflet_html(geojson: dict[str, Any], title: str = APP_TITLE, lang: str
     color: #3388ff;
     box-shadow: 0 1px 3px rgba(0,0,0,0.2);
   }}
+  .bbox-handle-icon.nw, .bbox-handle-icon.se, .bbox-handle-icon.nw div, .bbox-handle-icon.se div {{
+    cursor: nwse-resize !important;
+  }}
+  .bbox-handle-icon.ne, .bbox-handle-icon.sw, .bbox-handle-icon.ne div, .bbox-handle-icon.sw div {{
+    cursor: nesw-resize !important;
+  }}
+  .history-rect {{
+    pointer-events: fill !important;
+    cursor: pointer;
+  }}
 </style>
 </head>
 <body>
@@ -47,18 +64,15 @@ def make_leaflet_html(geojson: dict[str, Any], title: str = APP_TITLE, lang: str
 const data = {gj};
 const lang = '{lang}';
 const map = L.map('map', {{ zoomControl: true }});
-const gsiStd = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{{z}}/{{x}}/{{y}}.png', {{
-  attribution: '{gsi_attr}', maxZoom: 18
+const baseTile = L.tileLayer('{tile_url}', {{
+  attribution: '{tile_attribution}', maxZoom: 19
 }});
-const osm = L.tileLayer('https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
-  attribution: '&copy; OpenStreetMap contributors', maxZoom: 19
-}});
-gsiStd.addTo(map);
+baseTile.addTo(map);
 
 // History layer group and controls
 const historyLayer = L.layerGroup().addTo(map);
 L.control.layers(
-  {{'{gsi_layer_name}': gsiStd, '{osm_layer_name}': osm}},
+  null,
   {{'{history_layer_name}': historyLayer}},
   {{collapsed: false}}
 ).addTo(map);
@@ -92,6 +106,7 @@ const SelectControl = L.Control.extend({{
   options: {{ position: 'topleft' }},
   onAdd: function(map) {{
     const btn = L.DomUtil.create('button', 'leaflet-bar');
+    btn.id = 'select-bbox-btn';
     btn.innerHTML = '{select_btn_text}';
     btn.style.backgroundColor = 'white';
     btn.style.border = '2px solid rgba(0,0,0,0.2)';
@@ -135,13 +150,12 @@ function createHandles() {{
     se: bounds.getSouthEast()
   }};
 
-  const handleIcon = L.divIcon({{
-    className: 'bbox-handle-icon',
-    html: '<div style="width:10px;height:10px;background:#3388ff;border:2px solid white;border-radius:50%;margin:-4px 0 0 -4px;"></div>',
-    iconSize: [10, 10]
-  }});
-
   Object.keys(corners).forEach(pos => {{
+    const handleIcon = L.divIcon({{
+      className: 'bbox-handle-icon ' + pos,
+      html: '<div style="width:10px;height:10px;background:#3388ff;border:2px solid white;border-radius:50%;margin:-4px 0 0 -4px;"></div>',
+      iconSize: [10, 10]
+    }});
     const marker = L.marker(corners[pos], {{ icon: handleIcon, draggable: true }}).addTo(map);
     activeHandles.push({{ pos: pos, marker: marker }});
 
@@ -226,13 +240,10 @@ map.on('mouseup', function(e) {{
   selectMode = false;
   
   // Reset UI
-  const btns = document.getElementsByClassName('leaflet-bar');
-  for (let i=0; i<btns.length; i++) {{
-    const btn = btns[i];
-    if (btn.classList.contains('leaflet-bar')) {{
-      btn.style.backgroundColor = 'white';
-      btn.innerHTML = '{select_btn_text}';
-    }}
+  const btn = document.getElementById('select-bbox-btn');
+  if (btn) {{
+    btn.style.backgroundColor = 'white';
+    btn.innerHTML = '{select_btn_text}';
   }}
   map.dragging.enable();
   createHandles();
@@ -265,13 +276,15 @@ window.addHistoryBounds = function(w, s, e, n, name) {{
     color: "#4dabf7",
     weight: 1,
     fillOpacity: 0.05,
-    dashArray: "4, 4"
+    dashArray: "4, 4",
+    className: "history-rect"
   }}).addTo(historyLayer);
   
   rect.bindTooltip(escapeHtml(name), {{
     permanent: true,
     direction: 'top',
-    className: 'history-label'
+    className: 'history-label',
+    interactive: true
   }});
 
   rect.on('click', function(e) {{
