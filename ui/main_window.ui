@@ -32,8 +32,8 @@
       <property name="orientation">
        <enum>Qt::Horizontal</enum>
       </property>
-      <!-- Left Panel -->
-      <widget class="QWidget" name="leftPanel">
+      <!-- Left Panel Scroll Area -->
+      <widget class="QScrollArea" name="leftScrollArea">
        <property name="minimumSize">
         <size>
          <width>360</width>
@@ -46,7 +46,11 @@
          <height>16777215</height>
         </size>
        </property>
-       <layout class="QVBoxLayout" name="leftLayout">
+       <property name="widgetResizable">
+        <bool>true</bool>
+       </property>
+       <widget class="QWidget" name="leftPanel">
+        <layout class="QVBoxLayout" name="leftLayout">
         <!-- Language Selector Group -->
         <item>
          <widget class="QWidget" name="lang_container" native="true">
@@ -205,15 +209,25 @@
              </property>
             </widget>
            </item>
+          </layout>
+         </widget>
+        </item>
+        <!-- Export Settings Group -->
+        <item>
+         <widget class="QGroupBox" name="export_group">
+          <property name="title">
+           <string>書き出し設定</string>
+          </property>
+          <layout class="QFormLayout" name="formLayout_export">
            <!-- BBox Toggle Row -->
-           <item row="7" column="0">
+           <item row="0" column="0">
             <widget class="QLabel" name="label_bbox">
              <property name="text">
               <string>出力範囲</string>
              </property>
             </widget>
            </item>
-           <item row="7" column="1">
+           <item row="0" column="1">
             <widget class="QCheckBox" name="use_bbox_check">
              <property name="text">
               <string>出力範囲を使用</string>
@@ -221,14 +235,14 @@
             </widget>
            </item>
            <!-- BBox Coordinates (Min Lon/Lat) -->
-           <item row="8" column="0">
+           <item row="1" column="0">
             <widget class="QLabel" name="label_bbox_min">
              <property name="text">
               <string>最小 経度/緯度</string>
              </property>
             </widget>
            </item>
-           <item row="8" column="1">
+           <item row="1" column="1">
             <widget class="QWidget" name="bbox_min_widget" native="true">
              <layout class="QHBoxLayout" name="bbox_min_layout">
               <property name="leftMargin"><number>0</number></property>
@@ -249,14 +263,14 @@
             </widget>
            </item>
            <!-- BBox Coordinates (Max Lon/Lat) -->
-           <item row="9" column="0">
+           <item row="2" column="0">
             <widget class="QLabel" name="label_bbox_max">
              <property name="text">
               <string>最大 経度/緯度</string>
              </property>
             </widget>
            </item>
-           <item row="9" column="1">
+           <item row="2" column="1">
             <widget class="QWidget" name="bbox_max_widget" native="true">
              <layout class="QHBoxLayout" name="bbox_max_layout">
               <property name="leftMargin"><number>0</number></property>
@@ -277,7 +291,7 @@
             </widget>
            </item>
            <!-- BBox Clear Button -->
-           <item row="10" column="1">
+           <item row="3" column="1">
             <widget class="QPushButton" name="clear_bbox_btn">
              <property name="text">
               <string>範囲クリア</string>
@@ -285,14 +299,14 @@
             </widget>
            </item>
            <!-- Scale adjustment Row -->
-           <item row="11" column="0">
+           <item row="4" column="0">
             <widget class="QLabel" name="label_scale">
              <property name="text">
               <string>出力倍率 X / Y</string>
              </property>
             </widget>
            </item>
-           <item row="11" column="1">
+           <item row="4" column="1">
             <widget class="QWidget" name="scale_widget" native="true">
              <layout class="QHBoxLayout" name="scale_layout">
               <property name="leftMargin"><number>0</number></property>
@@ -321,14 +335,14 @@
             </widget>
            </item>
            <!-- Spline Tolerance Row -->
-           <item row="12" column="0">
+           <item row="5" column="0">
             <widget class="QLabel" name="label_spline_tolerance">
              <property name="text">
               <string>近似許容誤差 (m)</string>
              </property>
             </widget>
            </item>
-           <item row="12" column="1">
+           <item row="5" column="1">
             <widget class="QDoubleSpinBox" name="spline_tolerance_spin">
              <property name="decimals">
               <number>1</number>
@@ -348,14 +362,14 @@
             </widget>
            </item>
            <!-- Junction Spacing Row -->
-           <item row="13" column="0">
+           <item row="6" column="0">
             <widget class="QLabel" name="label_junction_spacing">
              <property name="text">
               <string>分岐点保護範囲 (m)</string>
              </property>
             </widget>
            </item>
-           <item row="13" column="1">
+           <item row="6" column="1">
             <widget class="QDoubleSpinBox" name="junction_spacing_spin">
              <property name="decimals">
               <number>1</number>
@@ -375,14 +389,14 @@
             </widget>
            </item>
            <!-- Max Spacing Row -->
-           <item row="14" column="0">
+           <item row="7" column="0">
             <widget class="QLabel" name="label_max_spacing">
              <property name="text">
               <string>分割の最大間隔 (m)</string>
              </property>
             </widget>
            </item>
-           <item row="14" column="1">
+           <item row="7" column="1">
             <widget class="QDoubleSpinBox" name="max_spacing_spin">
              <property name="decimals">
               <number>1</number>
@@ -402,14 +416,14 @@
             </widget>
            </item>
            <!-- Straight Tolerance Row -->
-           <item row="15" column="0">
+           <item row="8" column="0">
             <widget class="QLabel" name="label_straight_tolerance">
              <property name="text">
               <string>直線判定許容差 (m)</string>
              </property>
             </widget>
            </item>
-           <item row="15" column="1">
+           <item row="8" column="1">
             <widget class="QDoubleSpinBox" name="straight_tolerance_spin">
              <property name="decimals">
               <number>2</number>
@@ -464,6 +478,7 @@
         </item>
        </layout>
       </widget>
+     </widget>
       <!-- Right Panel (Tabs) -->
       <widget class="QTabWidget" name="tabs">
        <property name="currentIndex">

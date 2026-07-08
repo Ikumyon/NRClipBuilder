@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Језик / Language",
   "filter_group": "Филтер",
+  "export_group": "Поставке извоза",
   "label_keyword": "Кључне речи",
   "label_fields": "Поља за претрагу",
   "label_exclude": "Изузете кључне речи",

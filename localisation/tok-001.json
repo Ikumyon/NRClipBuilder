@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "toki / Language",
   "filter_group": "ilo ante",
+  "export_group": "ante pi nasin pana",
   "label_keyword": "nimi suli",
   "label_fields": "Search Fields",
   "label_exclude": "Exclude Keywords",

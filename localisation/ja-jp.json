@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Language / 言語",
   "filter_group": "フィルター",
+  "export_group": "書き出し設定",
   "label_keyword": "キーワード",
   "label_fields": "検索フィールド",
   "label_exclude": "除外キーワード",

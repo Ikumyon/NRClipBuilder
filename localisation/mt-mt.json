@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Lingwa / Language",
   "filter_group": "Filtru",
+  "export_group": "Settings tal-esportazzjoni",
   "label_keyword": "Kliem ewlieni",
   "label_fields": "Search Fields",
   "label_exclude": "Exclude Keywords",

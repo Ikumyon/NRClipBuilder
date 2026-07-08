@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Keel / Language",
   "filter_group": "Filter",
+  "export_group": "Ekspordi seaded",
   "label_keyword": "Märksõnad",
   "label_fields": "Otsinguväljad",
   "label_exclude": "Välistatavad märksõnad",

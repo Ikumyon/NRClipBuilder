@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "زبان / Language",
   "filter_group": "فیلتر",
+  "export_group": "تنظیمات صادرکردن",
   "label_keyword": "کلیدواژه‌ها",
   "label_fields": "فیلدهای جست‌وجو",
   "label_exclude": "کلیدواژه‌های حذف‌شونده",

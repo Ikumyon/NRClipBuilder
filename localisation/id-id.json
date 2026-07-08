@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Language / Bahasa",
   "filter_group": "Filter",
+  "export_group": "Pengaturan Ekspor",
   "label_keyword": "Kata kunci",
   "label_fields": "Bidang pencarian",
   "label_exclude": "Kata kunci pengecualian",

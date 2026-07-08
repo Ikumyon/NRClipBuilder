@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Pük / Language",
   "filter_group": "Fiman",
+  "export_group": "Paramets de veg",
   "label_keyword": "Klavavöds",
   "label_fields": "Search Fields",
   "label_exclude": "Exclude Keywords",

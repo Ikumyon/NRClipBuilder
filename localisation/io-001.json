@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Linguo / Language",
   "filter_group": "Filtrilo",
+  "export_group": "Eksport-ajusti",
   "label_keyword": "Klefvorti",
   "label_fields": "Search Fields",
   "label_exclude": "Exclude Keywords",

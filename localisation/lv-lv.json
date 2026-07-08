@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Valoda / Language",
   "filter_group": "Filtrs",
+  "export_group": "Eksporta iestatījumi",
   "label_keyword": "Atslēgvārdi",
   "label_fields": "Meklēšanas lauki",
   "label_exclude": "Izslēdzamie atslēgvārdi",

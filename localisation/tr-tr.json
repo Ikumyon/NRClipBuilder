@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Dil / Language",
   "filter_group": "Filtre",
+  "export_group": "Dışa aktarma ayarları",
   "label_keyword": "Anahtar kelimeler",
   "label_fields": "Arama alanları",
   "label_exclude": "Hariç tutulacak anahtar kelimeler",

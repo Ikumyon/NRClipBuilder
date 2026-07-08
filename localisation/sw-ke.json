@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Lugha / Language",
   "filter_group": "Kichujio",
+  "export_group": "Mipangilio ya kuhamisha",
   "label_keyword": "Maneno muhimu",
   "label_fields": "Sehemu za utafutaji",
   "label_exclude": "Maneno ya kuondoa",

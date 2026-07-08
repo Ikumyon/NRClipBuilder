@@ -254,6 +254,7 @@ class MainWindow(QMainWindow):
     def retranslate_ui(self) -> None:
         self.label_lang.setText(self.tr_msg("lang_label"))
         self.filter_group.setTitle(self.tr_msg("filter_group"))
+        self.export_group.setTitle(self.tr_msg("export_group"))
         self.label_keyword.setText(self.tr_msg("label_keyword"))
         self.label_fields.setText(self.tr_msg("label_fields"))
         self.label_exclude.setText(self.tr_msg("label_exclude"))

@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Език / Language",
   "filter_group": "Филтър",
+  "export_group": "Настройки за експортиране",
   "label_keyword": "Ключови думи",
   "label_fields": "Полета за търсене",
   "label_exclude": "Изключени ключови думи",

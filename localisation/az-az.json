@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Dil / Language",
   "filter_group": "Filtr",
+  "export_group": "Eksport parametrləri",
   "label_keyword": "Açar sözlər",
   "label_fields": "Search Fields",
   "label_exclude": "Exclude Keywords",

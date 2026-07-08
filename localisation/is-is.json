@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Tungumál / Language",
   "filter_group": "Sía",
+  "export_group": "Útflutningsstillingar",
   "label_keyword": "Leitarorð",
   "label_fields": "Leitareitir",
   "label_exclude": "Útilokuð leitarorð",

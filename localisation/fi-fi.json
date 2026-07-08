@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Language / Kieli",
   "filter_group": "Suodatin",
+  "export_group": "Vientiasetukset",
   "label_keyword": "Avainsana",
   "label_fields": "Hakukentät",
   "label_exclude": "Poissuljettavat avainsanat",

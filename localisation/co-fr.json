@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Lingua / Language",
   "filter_group": "Filtru",
+  "export_group": "Impostazioni di esportazione",
   "label_keyword": "Parolle chjave",
   "label_fields": "Search Fields",
   "label_exclude": "Exclude Keywords",

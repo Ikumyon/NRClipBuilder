@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Ngôn ngữ / Language",
   "filter_group": "Bộ lọc",
+  "export_group": "Cài đặt xuất",
   "label_keyword": "Từ khóa",
   "label_fields": "Trường tìm kiếm",
   "label_exclude": "Từ khóa loại trừ",

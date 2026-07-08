@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Тіл / Language",
   "filter_group": "Сүзгі",
+  "export_group": "Экспорттау параметрлері",
   "label_keyword": "Кілт сөздер",
   "label_fields": "Search Fields",
   "label_exclude": "Exclude Keywords",

@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Забон / Language",
   "filter_group": "Филтр",
+  "export_group": "Танзимоти содирот",
   "label_keyword": "Калидвожаҳо",
   "label_fields": "Search Fields",
   "label_exclude": "Exclude Keywords",

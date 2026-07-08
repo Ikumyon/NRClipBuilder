@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Language / Språk",
   "filter_group": "Filter",
+  "export_group": "Eksportinnstillinger",
   "label_keyword": "Nøkkelord",
   "label_fields": "Søkefelt",
   "label_exclude": "Ekskluder nøkkelord",

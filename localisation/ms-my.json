@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Bahasa / Language",
   "filter_group": "Penapis",
+  "export_group": "Tetapan Eksport",
   "label_keyword": "Kata kunci",
   "label_fields": "Medan carian",
   "label_exclude": "Kata kunci dikecualikan",

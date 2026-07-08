@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Language / Γλώσσα",
   "filter_group": "Φίλτρο",
+  "export_group": "Ρυθμίσεις εξαγωγής",
   "label_keyword": "Λέξη-κλειδί",
   "label_fields": "Πεδία αναζήτησης",
   "label_exclude": "Λέξεις-κλειδιά εξαίρεσης",

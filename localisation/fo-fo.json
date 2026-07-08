@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Mál / Language",
   "filter_group": "Filtur",
+  "export_group": "Útflytingarstillingar",
   "label_keyword": "Lyklaorð",
   "label_fields": "Search Fields",
   "label_exclude": "Exclude Keywords",

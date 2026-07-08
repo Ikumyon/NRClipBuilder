@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Taal / Language",
   "filter_group": "Filter",
+  "export_group": "Exportinstellingen",
   "label_keyword": "Trefwoorden",
   "label_fields": "Zoekvelden",
   "label_exclude": "Uit te sluiten trefwoorden",

@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Cànan / Language",
   "filter_group": "Criathrag",
+  "export_group": "Roghainnean às-phortaich",
   "label_keyword": "Faclan-luirg",
   "label_fields": "Search Fields",
   "label_exclude": "Exclude Keywords",

@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Hizkuntza / Language",
   "filter_group": "Iragazkia",
+  "export_group": "Esportazio ezarpenak",
   "label_keyword": "Gako-hitzak",
   "label_fields": "Bilaketa-eremuak",
   "label_exclude": "Baztertzeko gako-hitzak",

@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Iaith / Language",
   "filter_group": "Hidlydd",
+  "export_group": "Gosodiadau allforio",
   "label_keyword": "Geiriau allweddol",
   "label_fields": "Search Fields",
   "label_exclude": "Exclude Keywords",

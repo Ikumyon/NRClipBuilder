@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Language / اللغة",
   "filter_group": "عامل التصفية",
+  "export_group": "إعدادات التصدير",
   "label_keyword": "الكلمة المفتاحية",
   "label_fields": "حقول البحث",
   "label_exclude": "الكلمات المفتاحية المستبعدة",

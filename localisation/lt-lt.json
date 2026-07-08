@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Kalba / Language",
   "filter_group": "Filtras",
+  "export_group": "Eksportavimo nustatymai",
   "label_keyword": "Raktažodžiai",
   "label_fields": "Paieškos laukai",
   "label_exclude": "Neįtraukti raktažodžiai",

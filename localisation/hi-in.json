@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "भाषा / Language",
   "filter_group": "फ़िल्टर",
+  "export_group": "निर्यात सेटिंग्स",
   "label_keyword": "कीवर्ड",
   "label_fields": "खोज फ़ील्ड",
   "label_exclude": "हटाने वाले कीवर्ड",

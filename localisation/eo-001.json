@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Lingvo / Language",
   "filter_group": "Filtrilo",
+  "export_group": "Eksportaj agordoj",
   "label_keyword": "Ŝlosilvortoj",
   "label_fields": "Search Fields",
   "label_exclude": "Exclude Keywords",

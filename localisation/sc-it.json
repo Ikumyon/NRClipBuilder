@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Limba / Language",
   "filter_group": "Filtru",
+  "export_group": "Impostatziones de esportatzione",
   "label_keyword": "Paràulas crae",
   "label_fields": "Search Fields",
   "label_exclude": "Exclude Keywords",

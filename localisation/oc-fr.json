@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Lenga / Language",
   "filter_group": "Filtre",
+  "export_group": "Paramètres d'esportacion",
   "label_keyword": "Mots claus",
   "label_fields": "Search Fields",
   "label_exclude": "Exclude Keywords",

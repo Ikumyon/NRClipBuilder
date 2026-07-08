@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "भाषा / Language",
   "filter_group": "फिल्टर",
+  "export_group": "निर्यात सेटिंग्ज",
   "label_keyword": "कीवर्ड",
   "label_fields": "Search Fields",
   "label_exclude": "Exclude Keywords",

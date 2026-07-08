@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Language / Nyelv",
   "filter_group": "Szűrő",
+  "export_group": "Exportálási beállítások",
   "label_keyword": "Kulcsszó",
   "label_fields": "Keresési mezők",
   "label_exclude": "Kizárt kulcsszavak",

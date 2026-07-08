@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Language / 语言",
   "filter_group": "筛选器",
+  "export_group": "导出设置",
   "label_keyword": "关键词",
   "label_fields": "搜索字段",
   "label_exclude": "排除关键词",

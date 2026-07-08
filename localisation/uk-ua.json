@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Language / Мова",
   "filter_group": "Фільтр",
+  "export_group": "Налаштування експорту",
   "label_keyword": "Ключове слово",
   "label_fields": "Поля пошуку",
   "label_exclude": "Ключові слова для виключення",

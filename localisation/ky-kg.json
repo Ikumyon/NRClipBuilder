@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Тил / Language",
   "filter_group": "Чыпка",
+  "export_group": "Экспорттоо жөндөөлөрү",
   "label_keyword": "Ачкыч сөздөр",
   "label_fields": "Search Fields",
   "label_exclude": "Exclude Keywords",

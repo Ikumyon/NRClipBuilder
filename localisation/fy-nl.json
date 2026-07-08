@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Taal / Language",
   "filter_group": "Filter",
+  "export_group": "Eksportynstellingen",
   "label_keyword": "Kaaiwurden",
   "label_fields": "Search Fields",
   "label_exclude": "Exclude Keywords",

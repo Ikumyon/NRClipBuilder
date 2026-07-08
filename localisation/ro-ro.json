@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Limbă / Language",
   "filter_group": "Filtru",
+  "export_group": "Setări export",
   "label_keyword": "Cuvinte-cheie",
   "label_fields": "Câmpuri de căutare",
   "label_exclude": "Cuvinte-cheie excluse",

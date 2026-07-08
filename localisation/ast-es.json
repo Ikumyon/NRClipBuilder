@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Llingua / Language",
   "filter_group": "Filtru",
+  "export_group": "Axustes d'esportación",
   "label_keyword": "Pallabres clave",
   "label_fields": "Search Fields",
   "label_exclude": "Exclude Keywords",

@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Լեզու / Language",
   "filter_group": "Զտիչ",
+  "export_group": "Արտահանման կարգավորումներ",
   "label_keyword": "Հիմնաբառեր",
   "label_fields": "Search Fields",
   "label_exclude": "Exclude Keywords",

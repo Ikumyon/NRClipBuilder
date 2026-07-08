@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "زبان / Language",
   "filter_group": "فلٹر",
+  "export_group": "برآمدگی کی ترتیبات",
   "label_keyword": "کلیدی الفاظ",
   "label_fields": "Search Fields",
   "label_exclude": "Exclude Keywords",

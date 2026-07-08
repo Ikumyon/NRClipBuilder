@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "ভাষা / Language",
   "filter_group": "ফিল্টার",
+  "export_group": "রপ্তানি সেটিংস",
   "label_keyword": "কীওয়ার্ড",
   "label_fields": "Search Fields",
   "label_exclude": "Exclude Keywords",

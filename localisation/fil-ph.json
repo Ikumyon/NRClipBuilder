@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Wika / Language",
   "filter_group": "Filter",
+  "export_group": "Mga Setting ng Pag-export",
   "label_keyword": "Mga keyword",
   "label_fields": "Mga field sa paghahanap",
   "label_exclude": "Mga keyword na ibubukod",

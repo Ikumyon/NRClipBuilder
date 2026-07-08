@@ -3,6 +3,7 @@
   "window_title": "NRClipBuilder",
   "lang_label": "Til / Language",
   "filter_group": "Filtr",
+  "export_group": "Eksport sozlamalari",
   "label_keyword": "Kalit soʻzlar",
   "label_fields": "Search Fields",
   "label_exclude": "Exclude Keywords",
