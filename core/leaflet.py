@@ -10,9 +10,15 @@ def make_leaflet_html(
     title: str = APP_TITLE,
     lang: str = "ja",
     translation: dict[str, Any] = None,
-    tile_url: str = "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-    tile_attribution: str = "&copy; OpenStreetMap contributors"
+    tile_configs: list[dict[str, str]] = None,
+    layers_svg_base64: str = ""
 ) -> str:
+    if tile_configs is None:
+        tile_configs = [{
+            "url": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+            "attribution": "&copy; OpenStreetMap contributors"
+        }]
+    tile_configs_json = json.dumps(tile_configs, ensure_ascii=False)
     gj = json.dumps(geojson, ensure_ascii=False, separators=(",", ":"))
     feature_count = len(geojson.get("features", []))
     
@@ -21,6 +27,7 @@ def make_leaflet_html(
     gsi_layer_name = t.get("map_layer_gsi", "GSI Map" if lang == "en" else "国土地理院地図")
     osm_layer_name = t.get("map_layer_osm", "OpenStreetMap")
     history_layer_name = t.get("map_layer_history", "History Bounds" if lang == "en" else "過去の出力履歴")
+    osm_abandoned_layer_name = t.get("map_layer_osm_abandoned", "OSM廃線データ" if lang == "ja" else "OSM Abandoned Rails")
     no_attr_text = t.get("map_no_attr", "(No attributes)" if lang == "en" else "(属性なし)")
     select_btn_text = t.get("map_select_btn", "Select BBox" if lang == "en" else "範囲選択")
     selecting_btn_text = t.get("map_select_btn_active", "Selecting BBox (Drag on map)" if lang == "en" else "範囲選択中 (ドラッグして囲む)")
@@ -55,6 +62,11 @@ def make_leaflet_html(
     pointer-events: fill !important;
     cursor: pointer;
   }}
+  .leaflet-control-layers-toggle {{
+    background-image: url("data:image/svg+xml;base64,{layers_svg_base64}") !important;
+    background-size: 20px 20px;
+    background-position: center;
+  }}
 </style>
 </head>
 <body>
@@ -64,18 +76,17 @@ def make_leaflet_html(
 const data = {gj};
 const lang = '{lang}';
 const map = L.map('map', {{ zoomControl: true }});
-const baseTile = L.tileLayer('{tile_url}', {{
-  attribution: '{tile_attribution}', maxZoom: 19
+const tileConfigs = {tile_configs_json};
+tileConfigs.forEach(cfg => {{
+  if (cfg.url) {{
+    L.tileLayer(cfg.url, {{
+      attribution: cfg.attribution || '', maxZoom: 19
+    }}).addTo(map);
+  }}
 }});
-baseTile.addTo(map);
 
-// History layer group and controls
+// History layer group (controls will be added dynamically at the bottom left)
 const historyLayer = L.layerGroup().addTo(map);
-L.control.layers(
-  null,
-  {{'{history_layer_name}': historyLayer}},
-  {{collapsed: false}}
-).addTo(map);
 
 function propHtml(props) {{
   const keys = Object.keys(props || {{}}).slice(0, 30);
@@ -84,17 +95,43 @@ function propHtml(props) {{
 }}
 function escapeHtml(s) {{ return s.replace(/[&<>"']/g, m => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[m])); }}
 
-const layer = L.geoJSON(data, {{
-  style: function(feature) {{ return {{ color: '#d6336c', weight: 5, opacity: 0.9 }}; }},
-  pointToLayer: function(feature, latlng) {{ return L.circleMarker(latlng, {{ radius: 5, color: '#d6336c', weight: 2, fillOpacity: 0.8 }}); }},
-  onEachFeature: function(feature, layer) {{ layer.bindPopup(propHtml(feature.properties)); }}
-}}).addTo(map);
+// Dynamically create layer groups based on the "_source" (or "source") property of each feature
+const layers = {{}};
+const layerNames = {{}};
+const OSM_SOURCE = "osm";
+const osmLayerName = '{osm_abandoned_layer_name}';
 
-const b = layer.getBounds();
-if (b.isValid()) map.fitBounds(b.pad(0.15)); else map.setView([44.8, 142.5], 9);
-const info = L.control({{position:'bottomleft'}});
-info.onAdd = function() {{ const div = L.DomUtil.create('div','info'); div.innerHTML = '<b>{html.escape(title)}</b><br>{feature_count} features'; return div; }};
-info.addTo(map);
+data.features.forEach(function(f) {{
+  var src = (f.properties && (f.properties._source || f.properties.source)) || "Imported Data";
+  if (!layers[src]) {{
+    var isOsm = (src === OSM_SOURCE);
+    var color = isOsm ? '#4c6ef5' : '#d6336c';
+    var weight = isOsm ? 4 : 5;
+    
+    layers[src] = L.geoJSON(null, {{
+      style: function() {{ return {{ color: color, weight: weight, opacity: 0.9 }}; }},
+      pointToLayer: function(feat, latlng) {{ return L.circleMarker(latlng, {{ radius: 5, color: color, weight: 2, fillOpacity: 0.8 }}); }},
+      onEachFeature: function(feat, lyr) {{ lyr.bindPopup(propHtml(feat.properties)); }}
+    }}).addTo(map);
+    
+    if (src === OSM_SOURCE) {{
+      layerNames[src] = osmLayerName;
+    }} else {{
+      layerNames[src] = src;
+    }}
+  }}
+  layers[src].addData(f);
+}});
+
+// Fit map bounds to show all active layers
+let bounds = L.latLngBounds();
+Object.keys(layers).forEach(function(src) {{
+  const b = layers[src].getBounds();
+  if (b.isValid()) bounds.extend(b);
+}});
+if (bounds.isValid()) map.fitBounds(bounds.pad(0.15)); else map.setView([44.8, 142.5], 9);
+
+
 
 // --- Active Selection Bounding Box Logic ---
 let selectMode = false;

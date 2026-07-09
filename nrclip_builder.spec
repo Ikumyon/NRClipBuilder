@@ -5,7 +5,7 @@ a = Analysis(
     ['nrclip_builder.py'],
     pathex=[],
     binaries=[],
-    datas=[('ui/main_window.ui', 'ui')],
+    datas=[('ui/main_window.ui', 'ui'), ('icon.ico', '.'), ('assets', 'assets')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -35,5 +35,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['icon.ico'],
+    icon='icon.ico',
 )

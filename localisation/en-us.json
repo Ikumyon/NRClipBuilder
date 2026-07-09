@@ -30,6 +30,7 @@
   "label_max_spacing": "Max Spacing (m)",
   "label_straight_tolerance": "Straight Tolerance (m)",
   "map_group": "Map Layers Settings",
+  "layer_group": "Layers",
   "label_base_map": "Base Map",
   "add_layer_btn": "Add Layer...",
   "dialog_add_layer_title": "Add Layer",
@@ -100,5 +101,15 @@
   "clear_history_btn": "Clear All History",
   "msg_clear_history_confirm": "Are you sure you want to clear all history?",
   "msg_clear_history_title": "Clear History",
-  "msg_history_cleared": "Cleared all history."
+  "msg_history_cleared": "Cleared all history.",
+  "add_line_btn": "Add Line Data",
+  "add_history_btn": "History",
+  "remove_layer_btn": "Remove",
+  "railway_rail": "Regular Rail",
+  "railway_subway": "Subway",
+  "railway_tram": "Tram",
+  "railway_light_rail": "Light Rail",
+  "railway_monorail": "Monorail",
+  "railway_funicular": "Funicular",
+  "railway_abandoned": "Abandoned / Disused"
 }

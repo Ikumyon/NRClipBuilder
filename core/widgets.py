@@ -1,9 +1,12 @@
+import base64
 import html
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Optional
 
 from PySide6.QtCore import QUrl, Qt
+
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QTextBrowser
 
@@ -49,12 +52,18 @@ class MapWidget(QWidget):
         self.last_title: str = "NRClipBuilder"
         self.current_lang: str = "ja"
         self.current_translation: Optional[dict[str, Any]] = None
-        self.tile_url: str = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-        self.tile_attribution: str = "&copy; OpenStreetMap contributors"
+        self.tile_configs: list[dict[str, str]] = []
 
-    def set_tile_config(self, tile_url: str, tile_attribution: str) -> None:
-        self.tile_url = tile_url
-        self.tile_attribution = tile_attribution
+    def set_tile_configs(self, configs: list[dict[str, str]]) -> None:
+        self.tile_configs = configs
+
+    def get_resource_path(self, relative_path: str) -> Path:
+        try:
+            base_path = Path(sys._MEIPASS)
+        except AttributeError:
+            base_path = Path(__file__).parent.parent
+        return base_path / relative_path
+
 
     def set_geojson(self, geojson: dict[str, Any], title: str, lang: str = "ja", translation: dict[str, Any] = None) -> None:
         self.last_geojson = geojson
@@ -65,14 +74,24 @@ class MapWidget(QWidget):
 
     def reload_map(self) -> None:
         geojson = self.last_geojson if self.last_geojson is not None else {"type": "FeatureCollection", "features": []}
+        
+        svg_path = self.get_resource_path("assets/icons/layers.svg")
+        svg_base64 = ""
+        if svg_path.exists():
+            try:
+                svg_base64 = base64.b64encode(svg_path.read_bytes()).decode("utf-8")
+            except Exception as e:
+                print(f"Error loading layers.svg: {e}")
+
         html_text = make_leaflet_html(
             geojson,
             title=self.last_title,
             lang=self.current_lang,
             translation=self.current_translation,
-            tile_url=self.tile_url,
-            tile_attribution=self.tile_attribution
+            tile_configs=self.tile_configs,
+            layers_svg_base64=svg_base64
         )
+
         out = Path(tempfile.gettempdir()) / "n05_map_filter_exporter_preview.html"
         out.write_text(html_text, encoding="utf-8")
         self.last_html_path = out

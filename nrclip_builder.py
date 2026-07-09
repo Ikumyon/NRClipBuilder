@@ -11,8 +11,9 @@ from __future__ import annotations
 import json
 import sys
 import traceback
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Optional
 
 from PySide6.QtCore import Qt, QFile, QLocale
 from PySide6.QtGui import QIcon
@@ -28,6 +29,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QDialogButtonBox,
     QVBoxLayout,
+    QTreeWidgetItem,
 )
 
 from core.geojson import geojson_to_overpass
@@ -48,6 +50,16 @@ MAX_TABLE_ROWS = 300
 DEFAULT_TRANSLATION: dict[str, str] = {}
 
 
+@dataclass
+class LayerEntry:
+    """ツリーに表示される各レイヤーの共通構造。"""
+    name: str
+    checked: bool = True
+    removable: bool = True
+    on_check_changed: Callable[[bool], None] | None = None
+    on_remove: Callable[[], None] | None = None
+
+
 def get_resource_path(relative_path: str) -> Path:
     """PyInstallerの一時展開先フォルダ(_MEIPASS)を考慮してリソースの絶対パスを取得する"""
     try:
@@ -64,26 +76,26 @@ def get_executable_dir() -> Path:
     return Path(__file__).parent
 
 
-class AddLayerDialog(QDialog):
+class AddMapDialog(QDialog):
     def __init__(self, parent=None, translation=None):
         super().__init__(parent)
         self.translation = translation or {}
-        self.setWindowTitle(self.tr_msg("dialog_add_layer_title", "レイヤーを追加"))
+        self.setWindowTitle(self.tr_msg("dialog_add_map_title", "背景地図を追加"))
         self.resize(400, 200)
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
 
         self.name_edit = QLineEdit(self)
-        self.name_edit.setPlaceholderText(self.tr_msg("dialog_layer_name_placeholder", "例: 国土地理院地図"))
+        self.name_edit.setPlaceholderText(self.tr_msg("dialog_map_name_placeholder", "例: 国土地理院地図"))
         self.url_edit = QLineEdit(self)
-        self.url_edit.setPlaceholderText(self.tr_msg("dialog_layer_url_placeholder", "例: https://example.com/{z}/{x}/{y}.png"))
+        self.url_edit.setPlaceholderText(self.tr_msg("dialog_map_url_placeholder", "例: https://example.com/{z}/{x}/{y}.png"))
         self.attr_edit = QLineEdit(self)
-        self.attr_edit.setPlaceholderText(self.tr_msg("dialog_layer_attr_placeholder", "例: &copy; Map providers"))
+        self.attr_edit.setPlaceholderText(self.tr_msg("dialog_map_attr_placeholder", "例: &copy; Map providers"))
 
-        form.addRow(self.tr_msg("dialog_label_layer_name", "レイヤー名"), self.name_edit)
-        form.addRow(self.tr_msg("dialog_label_layer_url", "タイルURL"), self.url_edit)
-        form.addRow(self.tr_msg("dialog_label_layer_attr", "著作権表記"), self.attr_edit)
+        form.addRow(self.tr_msg("dialog_label_map_name", "背景地図名"), self.name_edit)
+        form.addRow(self.tr_msg("dialog_label_map_url", "タイルURL"), self.url_edit)
+        form.addRow(self.tr_msg("dialog_label_map_attr", "著作権表記"), self.attr_edit)
         layout.addLayout(form)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
@@ -112,6 +124,7 @@ class AddLayerDialog(QDialog):
             self.url_edit.text().strip(),
             self.attr_edit.text().strip()
         )
+
 
 
 class MainWindow(QMainWindow):
@@ -172,7 +185,7 @@ class MainWindow(QMainWindow):
         self.map_tab.layout().addWidget(self.map_widget)
 
         # イベントの接続
-        self.apply_btn.clicked.connect(self.apply_filter)
+        # self.apply_btn.clicked.connect(self.apply_filter)
 
         # BBox 関連の初期化とシグナル接続
         self.selected_bbox = None
@@ -181,16 +194,31 @@ class MainWindow(QMainWindow):
         self.history_data = []
 
         # 背景地図の初期化
-        self.custom_layers: list[dict[str, str]] = []
-        self.base_map_combo.addItem("OpenStreetMap (OSM)")
-        self.base_map_combo.currentIndexChanged.connect(self.on_base_map_changed)
-        self.add_layer_btn.clicked.connect(self.on_add_layer_clicked)
+        self.custom_maps: list[dict[str, str]] = []
+        self.active_maps: set[str] = {"OpenStreetMap (OSM)"}
+        
+        # 独立したレイヤーの管理
+        self.layers: dict[str, FeatureStore] = {}
+        self.layers_filtered: dict[str, list[dict[str, Any]]] = {}
+        self.active_layers: set[str] = set()
+        self.show_history_bounds = False
+
+        # 統一レイヤーエントリ
+        self.layer_entries: list[LayerEntry] = []
+
+        self.add_map_btn.clicked.connect(self.on_add_map_clicked)
+        self.add_line_btn.clicked.connect(self.on_add_line_clicked)
+        self.add_history_btn.clicked.connect(self.on_add_history_clicked)
+        self.remove_layer_btn.clicked.connect(self.on_remove_layer_clicked)
+        
+        self.layer_tree.itemChanged.connect(self.on_layer_item_changed)
+        self.layer_tree.itemSelectionChanged.connect(self.on_layer_selection_changed)
+
 
         if HAS_WEBENGINE:
             self.map_widget.web.titleChanged.connect(self.on_title_changed)
             self.map_widget.web.loadFinished.connect(self.on_map_load_finished)
         self.clear_bbox_btn.clicked.connect(self.clear_bbox)
-        self.use_bbox_check.stateChanged.connect(self.on_use_bbox_changed)
 
         self.min_lon_edit.editingFinished.connect(self.on_coordinate_edited)
         self.min_lat_edit.editingFinished.connect(self.on_coordinate_edited)
@@ -207,7 +235,7 @@ class MainWindow(QMainWindow):
         self.load_config_from_file()
 
         # メニューアクションの接続
-        self.action_open.triggered.connect(self.open_file)
+        self.action_open.setVisible(False)
         self.action_export_geojson.triggered.connect(self.export_geojson)
         self.action_export_turnout.triggered.connect(self.export_turnout_json)
         self.action_export_nrclip.triggered.connect(self.export_nrclip)
@@ -216,6 +244,7 @@ class MainWindow(QMainWindow):
 
         # 初期ローカライズの適用
         self.retranslate_ui()
+        self.update_layer_tree()
 
         # ステータスバーと初期化
         self.statusBar().showMessage(self.tr_msg("msg_select_file"))
@@ -329,10 +358,6 @@ class MainWindow(QMainWindow):
         self.and_radio.setText(self.tr_msg("and_radio"))
         self.label_option.setText(self.tr_msg("label_option"))
         self.regex_check.setText(self.tr_msg("regex_check"))
-        self.line_only_check.setText(self.tr_msg("line_only_check"))
-        self.apply_btn.setText(self.tr_msg("apply_btn"))
-        self.label_bbox.setText(self.tr_msg("label_bbox"))
-        self.use_bbox_check.setText(self.tr_msg("use_bbox_check"))
         self.label_bbox_min.setText(self.tr_msg("label_bbox_min"))
         self.min_lon_edit.setPlaceholderText(self.tr_msg("min_lon_placeholder"))
         self.min_lat_edit.setPlaceholderText(self.tr_msg("min_lat_placeholder"))
@@ -345,10 +370,20 @@ class MainWindow(QMainWindow):
         self.label_junction_spacing.setText(self.tr_msg("label_junction_spacing"))
         self.label_max_spacing.setText(self.tr_msg("label_max_spacing"))
         self.label_straight_tolerance.setText(self.tr_msg("label_straight_tolerance"))
-        self.map_group.setTitle(self.tr_msg("map_group"))
-        self.label_base_map.setText(self.tr_msg("label_base_map"))
-        self.add_layer_btn.setText(self.tr_msg("add_layer_btn"))
-        self.log.setPlaceholderText(self.tr_msg("log_placeholder"))
+        self.add_line_btn.setText(self.tr_msg("add_line_btn"))
+        self.add_history_btn.setText(self.tr_msg("add_history_btn"))
+        self.add_map_btn.setText(self.tr_msg("add_map_btn"))
+        self.remove_layer_btn.setText(self.tr_msg("remove_layer_btn"))
+        self.layer_group.setTitle(self.tr_msg("layer_group"))
+        
+        self.railway_rail_check.setText(self.tr_msg("railway_rail"))
+        self.railway_subway_check.setText(self.tr_msg("railway_subway"))
+        self.railway_tram_check.setText(self.tr_msg("railway_tram"))
+        self.railway_light_rail_check.setText(self.tr_msg("railway_light_rail"))
+        self.railway_monorail_check.setText(self.tr_msg("railway_monorail"))
+        self.railway_funicular_check.setText(self.tr_msg("railway_funicular"))
+        self.railway_abandoned_check.setText(self.tr_msg("railway_abandoned"))
+
         
         self.tabs.setTabText(0, self.tr_msg("tab_map"))
         self.tabs.setTabText(1, self.tr_msg("tab_table"))
@@ -374,7 +409,8 @@ class MainWindow(QMainWindow):
             self.map_widget.retranslate_map(self.current_lang.split("-")[0], self.translation)
 
     def update_window_title(self) -> None:
-        src_name = self.store.source_path.name if self.store.source_path else ""
+        active_layer_name = self.get_selected_layer_name()
+        src_name = active_layer_name if active_layer_name else ""
         title_base = self.tr_msg("window_title")
         if src_name:
             self.setWindowTitle(f"{title_base} - {src_name}")
@@ -390,36 +426,31 @@ class MainWindow(QMainWindow):
 
 
     def log_msg(self, msg: str) -> None:
-        self.log.appendPlainText(msg)
-        self.statusBar().showMessage(msg)
-
-    def open_file(self) -> None:
-        path_str, _ = QFileDialog.getOpenFileName(
-            self,
-            self.tr_msg("dialog_open_file_title"),
-            str(self.last_output_dir),
-            "GIS data (*.zip *.shp *.geojson *.json);;All files (*.*)",
-        )
-        if not path_str:
-            return
-        self.load_path(Path(path_str))
+        self.statusBar().showMessage(msg, 5000)
 
     def load_path(self, path: Path) -> None:
         try:
-            self.store.cleanup()
-            self.update_window_title()
-            self.log.clear()
             self.log_msg(self.tr_msg("msg_loading").format(path=path))
             QApplication.setOverrideCursor(Qt.WaitCursor)
-            self.store = load_any(path)
+            store = load_any(path)
             QApplication.restoreOverrideCursor()
+            
+            layer_name = path.name
+            for f in store.features:
+                if "properties" not in f:
+                    f["properties"] = {}
+                f["properties"]["_source"] = layer_name
+                
+            self.layers[layer_name] = store
+            self.active_layers.add(layer_name)
             self.last_output_dir = path.parent
-            self.log_msg(self.tr_msg("msg_load_success").format(count=len(self.store.features)))
-            if self.store.fields:
-                fields_str = ", ".join(self.store.fields[:60]) + (" ..." if len(self.store.fields) > 60 else "")
-                self.log_msg(self.tr_msg("msg_fields").format(fields=fields_str))
-            if self.store.crs_note:
-                self.log_msg(self.store.crs_note)
+            
+            self.log_msg(self.tr_msg("msg_load_success").format(count=len(store.features)))
+            if store.crs_note:
+                self.log_msg(store.crs_note)
+            
+            self.update_layer_tree()
+            self.select_tree_layer(layer_name)
             self.apply_filter()
         except Exception as exc:
             QApplication.restoreOverrideCursor()
@@ -428,74 +459,79 @@ class MainWindow(QMainWindow):
 
     def apply_filter(self) -> None:
         try:
-            features = self.store.features
-            if self.line_only_check.isChecked():
-                features = [f for f in features if geometry_is_line(f.get("geometry") or {})]
-            self.filtered = filter_features(
-                features,
-                keywords_text=self.keyword_edit.text(),
-                fields_text=self.field_edit.text(),
-                regex=self.regex_check.isChecked(),
-                match_all=self.and_radio.isChecked(),
-                exclude_text=self.exclude_edit.text(),
-            )
-            self.log_msg(self.tr_msg("msg_filtered_count").format(filtered=len(self.filtered), total=len(self.store.features)))
-            self._refresh_map(self.filtered)
-            self._refresh_table(self.filtered)
+            total_count = 0
+            for name, store in self.layers.items():
+                features = [f for f in store.features if geometry_is_line(f.get("geometry") or {})]
+                filtered = filter_features(
+                    features,
+                    keywords_text=self.keyword_edit.text(),
+                    fields_text=self.field_edit.text(),
+                    regex=self.regex_check.isChecked(),
+                    match_all=self.and_radio.isChecked(),
+                    exclude_text=self.exclude_edit.text(),
+                )
+                self.layers_filtered[name] = filtered
+                total_count += len(store.features)
+
+            map_features = []
+            filtered_count = 0
+            for name in self.active_layers:
+                if name in self.layers_filtered:
+                    map_features.extend(self.layers_filtered[name])
+                    filtered_count += len(self.layers_filtered[name])
+            self._refresh_map(map_features)
+
+            self.log_msg(self.tr_msg("msg_filtered_count").format(filtered=filtered_count, total=total_count))
+
+            active_layer_name = self.get_selected_layer_name()
+            if active_layer_name and active_layer_name in self.layers_filtered:
+                self._refresh_table(self.layers_filtered[active_layer_name])
+            else:
+                self.table.clear()
+                self.table.setRowCount(0)
+                self.table.setColumnCount(0)
+                
+            self.update_window_title()
         except Exception as exc:
             QMessageBox.critical(self, self.tr_msg("msg_filter_error_title"), f"{exc}\n\n{traceback.format_exc()}")
 
-    def on_base_map_changed(self, index: int) -> None:
-        self.apply_active_map_layer()
-        self.save_config_to_file()
-
-    def apply_active_map_layer(self) -> None:
-        if self.base_map_combo.currentIndex() == 0:
-            url = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attr = "&copy; OpenStreetMap contributors"
-        else:
-            idx = self.base_map_combo.currentIndex() - 1
-            if 0 <= idx < len(self.custom_layers):
-                layer = self.custom_layers[idx]
-                url = layer.get("url", "")
-                attr = layer.get("attribution", "")
-            else:
-                return
-        self.map_widget.set_tile_config(url, attr)
+    def apply_active_map(self) -> None:
+        configs = []
+        if "OpenStreetMap (OSM)" in self.active_maps:
+            configs.append({
+                "url": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                "attribution": "&copy; OpenStreetMap contributors"
+            })
+        for custom_map in self.custom_maps:
+            name = custom_map.get("name", "")
+            if name in self.active_maps:
+                configs.append({
+                    "url": custom_map.get("url", ""),
+                    "attribution": custom_map.get("attribution", "")
+                })
+        self.map_widget.set_tile_configs(configs)
         self.map_widget.reload_map()
 
-    def on_add_layer_clicked(self) -> None:
-        dialog = AddLayerDialog(self, self.translation)
+    def on_add_map_clicked(self) -> None:
+        dialog = AddMapDialog(self, self.translation)
         if dialog.exec() == QDialog.Accepted:
             name, url, attr = dialog.get_data()
             existing_idx = -1
-            for i, layer in enumerate(self.custom_layers):
-                if layer.get("name") == name:
+            for i, custom_map in enumerate(self.custom_maps):
+                if custom_map.get("name") == name:
                     existing_idx = i
                     break
             
-            layer_data = {"name": name, "url": url, "attribution": attr}
+            map_data = {"name": name, "url": url, "attribution": attr}
             if existing_idx >= 0:
-                self.custom_layers[existing_idx] = layer_data
+                self.custom_maps[existing_idx] = map_data
             else:
-                self.custom_layers.append(layer_data)
-                self.base_map_combo.addItem(name)
+                self.custom_maps.append(map_data)
             
-            self.base_map_combo.blockSignals(True)
-            idx = self.base_map_combo.findText(name)
-            if idx >= 0:
-                self.base_map_combo.setCurrentIndex(idx)
-            self.base_map_combo.blockSignals(False)
-            
-            self.apply_active_map_layer()
+            self.active_maps.add(name)
+            self.apply_active_map()
             self.save_config_to_file()
-
-    def on_use_bbox_changed(self, state: int) -> None:
-        if self.use_bbox_check.isChecked():
-            self.on_coordinate_edited()
-        else:
-            if HAS_WEBENGINE:
-                self.map_widget.web.page().runJavaScript("window.clearActiveBounds();")
+            self.update_layer_tree()
 
     def on_map_load_finished(self, ok: bool) -> None:
         if ok:
@@ -510,7 +546,6 @@ class MainWindow(QMainWindow):
             e = float(self.max_lon_edit.text())
             n = float(self.max_lat_edit.text())
             self.selected_bbox = (w, s, e, n)
-            self.use_bbox_check.setChecked(True)
             self.update_map_active_bbox()
         except ValueError:
             pass
@@ -552,7 +587,6 @@ class MainWindow(QMainWindow):
                     self.min_lat_edit.setText(f"{s:.7f}")
                     self.max_lon_edit.setText(f"{e:.7f}")
                     self.max_lat_edit.setText(f"{n:.7f}")
-                    self.use_bbox_check.setChecked(True)
                 except ValueError:
                     pass
         elif title.startswith("SELECT_HISTORY:"):
@@ -566,7 +600,6 @@ class MainWindow(QMainWindow):
                     self.min_lat_edit.setText(f"{s:.7f}")
                     self.max_lon_edit.setText(f"{e:.7f}")
                     self.max_lat_edit.setText(f"{n:.7f}")
-                    self.use_bbox_check.setChecked(True)
                     self.update_map_active_bbox()
                     self.select_history_row_by_name(name)
                 except ValueError:
@@ -585,7 +618,6 @@ class MainWindow(QMainWindow):
         self.min_lat_edit.clear()
         self.max_lon_edit.clear()
         self.max_lat_edit.clear()
-        self.use_bbox_check.setChecked(False)
         if HAS_WEBENGINE:
             self.map_widget.web.page().runJavaScript("window.clearActiveBounds();")
 
@@ -597,8 +629,8 @@ class MainWindow(QMainWindow):
             "exclude": self.exclude_edit.text(),
             "regex": self.regex_check.isChecked(),
             "match_all": self.and_radio.isChecked(),
-            "line_only": self.line_only_check.isChecked(),
-            "use_bbox": self.use_bbox_check.isChecked(),
+            "line_only": True,
+            "use_bbox": True,
             "bbox": self.selected_bbox,
             "scale_x": self.scale_x_spin.value(),
             "scale_y": self.scale_y_spin.value(),
@@ -606,8 +638,8 @@ class MainWindow(QMainWindow):
             "junction_spacing": self.junction_spacing_spin.value(),
             "max_spacing": self.max_spacing_spin.value(),
             "straight_tolerance": self.straight_tolerance_spin.value(),
-            "custom_layers": self.custom_layers,
-            "active_layer": self.base_map_combo.currentText(),
+            "custom_maps": self.custom_maps,
+            "active_maps": list(self.active_maps),
         }
         try:
             self.config_file.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -627,7 +659,6 @@ class MainWindow(QMainWindow):
                 self.and_radio.setChecked(True)
             else:
                 self.or_radio.setChecked(True)
-            self.line_only_check.setChecked(config.get("line_only", False))
             
             bbox = config.get("bbox")
             if bbox and len(bbox) == 4:
@@ -637,7 +668,6 @@ class MainWindow(QMainWindow):
                 self.max_lon_edit.setText(f"{bbox[2]:.7f}")
                 self.max_lat_edit.setText(f"{bbox[3]:.7f}")
             
-            self.use_bbox_check.setChecked(config.get("use_bbox", False))
             self.scale_x_spin.setValue(config.get("scale_x", 1.0))
             self.scale_y_spin.setValue(config.get("scale_y", 1.0))
             self.spline_tolerance_spin.setValue(config.get("spline_tolerance", 5.0))
@@ -645,25 +675,18 @@ class MainWindow(QMainWindow):
             self.max_spacing_spin.setValue(config.get("max_spacing", 200.0))
             self.straight_tolerance_spin.setValue(config.get("straight_tolerance", 0.5))
             
-            # Tile custom layers configuration
-            custom_layers = config.get("custom_layers", [])
-            self.custom_layers = custom_layers
+            # Tile custom maps configuration
+            custom_maps = config.get("custom_maps", config.get("custom_layers", []))
+            self.custom_maps = custom_maps
             
-            self.base_map_combo.blockSignals(True)
-            self.base_map_combo.clear()
-            self.base_map_combo.addItem("OpenStreetMap (OSM)")
-            for layer in self.custom_layers:
-                self.base_map_combo.addItem(layer.get("name", ""))
-            
-            active_layer = config.get("active_layer", "OpenStreetMap (OSM)")
-            index = self.base_map_combo.findText(active_layer)
-            if index >= 0:
-                self.base_map_combo.setCurrentIndex(index)
+            active_maps = config.get("active_maps")
+            if active_maps is not None:
+                self.active_maps = set(active_maps)
             else:
-                self.base_map_combo.setCurrentIndex(0)
-            self.base_map_combo.blockSignals(False)
-            
-            self.apply_active_map_layer()
+                legacy_active = config.get("active_map", config.get("active_layer", "OpenStreetMap (OSM)"))
+                self.active_maps = {legacy_active}
+            self.update_layer_tree()
+            self.apply_active_map()
         except Exception:
             pass
 
@@ -767,7 +790,7 @@ class MainWindow(QMainWindow):
             self.clear_bbox()
 
     def check_bbox_required(self) -> bool:
-        if not self.use_bbox_check.isChecked() or not self.selected_bbox:
+        if not self.selected_bbox:
             QMessageBox.warning(
                 self,
                 self.tr_msg("msg_bbox_warn_title"),
@@ -821,13 +844,18 @@ class MainWindow(QMainWindow):
         self.table.resizeColumnsToContents()
 
     def export_geojson(self) -> None:
+        name = self.get_selected_layer_name()
+        if not name or name not in self.layers_filtered:
+            QMessageBox.warning(self, self.tr_msg("msg_export_title"), "出力対象の線データレイヤーをツリーで選択してください。")
+            return
         if not self.check_bbox_required():
             return
-        if not self.filtered:
+        filtered = self.layers_filtered[name]
+        if not filtered:
             QMessageBox.information(self, self.tr_msg("msg_export_title"), self.tr_msg("msg_no_export_data"))
             return
         export_features = []
-        for f in self.filtered:
+        for f in filtered:
             clipped_geom = clip_geometry_to_bbox(f.get("geometry") or {}, self.selected_bbox)
             if clipped_geom:
                 new_feat = f.copy()
@@ -856,13 +884,18 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, self.tr_msg("msg_save_error_title"), str(exc))
 
     def export_turnout_json(self) -> None:
+        name = self.get_selected_layer_name()
+        if not name or name not in self.layers_filtered:
+            QMessageBox.warning(self, self.tr_msg("msg_export_title"), "出力対象の線データレイヤーをツリーで選択してください。")
+            return
         if not self.check_bbox_required():
             return
-        if not self.filtered:
+        filtered = self.layers_filtered[name]
+        if not filtered:
             QMessageBox.information(self, self.tr_msg("msg_export_title"), self.tr_msg("msg_no_export_data"))
             return
         export_features = []
-        for f in self.filtered:
+        for f in filtered:
             clipped_geom = clip_geometry_to_bbox(f.get("geometry") or {}, self.selected_bbox)
             if clipped_geom:
                 new_feat = f.copy()
@@ -896,13 +929,18 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, self.tr_msg("msg_save_error_title"), str(exc))
 
     def export_nrclip(self) -> None:
+        name = self.get_selected_layer_name()
+        if not name or name not in self.layers_filtered:
+            QMessageBox.warning(self, self.tr_msg("msg_export_title"), "出力対象の線データレイヤーをツリーで選択してください。")
+            return
         if not self.check_bbox_required():
             return
-        if not self.filtered:
+        filtered = self.layers_filtered[name]
+        if not filtered:
             QMessageBox.information(self, self.tr_msg("msg_export_title"), self.tr_msg("msg_no_export_data"))
             return
         export_features = []
-        for f in self.filtered:
+        for f in filtered:
             clipped_geom = clip_geometry_to_bbox(f.get("geometry") or {}, self.selected_bbox)
             if clipped_geom:
                 new_feat = f.copy()
@@ -954,8 +992,197 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         self.save_config_to_file()
-        self.store.cleanup()
+        for store in self.layers.values():
+            store.cleanup()
         super().closeEvent(event)
+
+    def on_add_line_clicked(self) -> None:
+        path_str, _ = QFileDialog.getOpenFileName(
+            self,
+            self.tr_msg("dialog_open_file_title"),
+            str(self.last_output_dir) if hasattr(self, "last_output_dir") else "",
+            "GIS data (*.zip *.shp *.geojson *.json);;ZIP (*.zip);;Shapefile (*.shp);;GeoJSON (*.geojson *.json);;All files (*.*)"
+        )
+        if path_str:
+            self.load_path(Path(path_str))
+
+    def on_add_history_clicked(self) -> None:
+        # 既にツリーにあれば何もしない
+        if any(e.name == "過去の出力履歴" for e in self.layer_entries):
+            return
+        self.show_history_bounds = True
+        self.update_layer_tree()
+        self.update_map_history_bboxes()
+
+    def on_remove_layer_clicked(self) -> None:
+        selected = self.layer_tree.selectedItems()
+        if not selected:
+            return
+        item = selected[0]
+        idx = item.data(0, Qt.UserRole)
+        if idx is None or idx >= len(self.layer_entries):
+            return
+        entry = self.layer_entries[idx]
+        if not entry.removable:
+            return
+        if entry.on_remove:
+            entry.on_remove()
+        self.layer_entries.pop(idx)
+        self.update_layer_tree()
+        self.log_msg(f"削除しました: {entry.name}")
+
+    def _rebuild_layer_entries(self) -> None:
+        """現在の状態から layer_entries を再構築する。"""
+        entries: list[LayerEntry] = []
+
+        # --- 背景地図 ---
+        def _make_map_check(map_name: str) -> Callable[[bool], None]:
+            def on_check(checked: bool) -> None:
+                if checked:
+                    self.active_maps.add(map_name)
+                else:
+                    self.active_maps.discard(map_name)
+                self.apply_active_map()
+                self.save_config_to_file()
+            return on_check
+
+        # OSM（削除不可）
+        osm_entry = LayerEntry(
+            name="OpenStreetMap (OSM)",
+            checked=("OpenStreetMap (OSM)" in self.active_maps),
+            removable=False,
+        )
+        osm_entry.on_check_changed = _make_map_check("OpenStreetMap (OSM)")
+        entries.append(osm_entry)
+
+        # カスタムマップ
+        for cm in self.custom_maps:
+            cm_name = cm.get("name", "")
+
+            def _make_map_remove(n: str = cm_name) -> Callable[[], None]:
+                def remove() -> None:
+                    self.custom_maps = [m for m in self.custom_maps if m.get("name") != n]
+                    self.active_maps.discard(n)
+                    self.apply_active_map()
+                    self.save_config_to_file()
+                return remove
+
+            entry = LayerEntry(
+                name=cm_name,
+                checked=(cm_name in self.active_maps),
+                removable=True,
+                on_remove=_make_map_remove(),
+            )
+            entry.on_check_changed = _make_map_check(cm_name)
+            entries.append(entry)
+
+        # --- 線データ ---
+        for ln in list(self.layers.keys()):
+            def _make_line_check(layer_name: str = ln) -> Callable[[bool], None]:
+                def on_check(checked: bool) -> None:
+                    if checked:
+                        self.active_layers.add(layer_name)
+                    else:
+                        self.active_layers.discard(layer_name)
+                    self.apply_filter()
+                return on_check
+
+            def _make_line_remove(layer_name: str = ln) -> Callable[[], None]:
+                def remove() -> None:
+                    if layer_name in self.layers:
+                        self.layers[layer_name].cleanup()
+                        del self.layers[layer_name]
+                    self.layers_filtered.pop(layer_name, None)
+                    self.active_layers.discard(layer_name)
+                    self.apply_filter()
+                return remove
+
+            entries.append(LayerEntry(
+                name=ln,
+                checked=(ln in self.active_layers),
+                removable=True,
+                on_check_changed=_make_line_check(),
+                on_remove=_make_line_remove(),
+            ))
+
+        # --- 履歴 ---
+        # 既存の layer_entries に履歴が含まれている場合のみ追加
+        has_history = any(e.name == "過去の出力履歴" for e in self.layer_entries)
+        if has_history:
+            def _history_check(checked: bool) -> None:
+                self.show_history_bounds = checked
+                if checked:
+                    self.update_map_history_bboxes()
+                else:
+                    if HAS_WEBENGINE:
+                        self.map_widget.web.page().runJavaScript("window.clearHistoryBounds();")
+
+            def _history_remove() -> None:
+                self.show_history_bounds = False
+                if HAS_WEBENGINE:
+                    self.map_widget.web.page().runJavaScript("window.clearHistoryBounds();")
+
+            entries.append(LayerEntry(
+                name="過去の出力履歴",
+                checked=self.show_history_bounds,
+                removable=True,
+                on_check_changed=_history_check,
+                on_remove=_history_remove,
+            ))
+
+        self.layer_entries = entries
+
+    def update_layer_tree(self) -> None:
+        self._rebuild_layer_entries()
+        self.layer_tree.blockSignals(True)
+        self.layer_tree.clear()
+        for i, entry in enumerate(self.layer_entries):
+            item = QTreeWidgetItem(self.layer_tree, [entry.name])
+            item.setCheckState(0, Qt.Checked if entry.checked else Qt.Unchecked)
+            item.setData(0, Qt.UserRole, i)
+        self.layer_tree.blockSignals(False)
+
+    def on_layer_item_changed(self, item: QTreeWidgetItem, column: int) -> None:
+        idx = item.data(0, Qt.UserRole)
+        if idx is None or idx >= len(self.layer_entries):
+            return
+        entry = self.layer_entries[idx]
+        checked = (item.checkState(0) == Qt.Checked)
+        entry.checked = checked
+        if entry.on_check_changed:
+            entry.on_check_changed(checked)
+
+    def on_layer_selection_changed(self) -> None:
+        self.update_window_title()
+        active_layer_name = self.get_selected_layer_name()
+        if active_layer_name and active_layer_name in self.layers_filtered:
+            self._refresh_table(self.layers_filtered[active_layer_name])
+        else:
+            self.table.clear()
+            self.table.setRowCount(0)
+            self.table.setColumnCount(0)
+
+    def get_selected_layer_name(self) -> Optional[str]:
+        selected = self.layer_tree.selectedItems()
+        if selected:
+            item = selected[0]
+            idx = item.data(0, Qt.UserRole)
+            if idx is not None and idx < len(self.layer_entries):
+                entry = self.layer_entries[idx]
+                if entry.name in self.layers:
+                    return entry.name
+        return None
+
+    def select_tree_layer(self, name: str) -> None:
+        self.layer_tree.blockSignals(True)
+        for i, entry in enumerate(self.layer_entries):
+            if entry.name in self.layers and entry.name == name:
+                item = self.layer_tree.topLevelItem(i)
+                if item:
+                    self.layer_tree.setCurrentItem(item)
+                    item.setSelected(True)
+                break
+        self.layer_tree.blockSignals(False)
 
 
 def main() -> int:
