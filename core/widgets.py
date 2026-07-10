@@ -21,6 +21,7 @@ except Exception:
     HAS_WEBENGINE = False
 
 from core.leaflet import make_leaflet_html
+from core.utils import get_resource_path
 
 
 class CustomWebPage(QWebEnginePage):
@@ -53,29 +54,36 @@ class MapWidget(QWidget):
         self.current_lang: str = "ja"
         self.current_translation: Optional[dict[str, Any]] = None
         self.tile_configs: list[dict[str, str]] = []
+        self.current_view: Optional[dict[str, Any]] = None
 
     def set_tile_configs(self, configs: list[dict[str, str]]) -> None:
         self.tile_configs = configs
 
-    def get_resource_path(self, relative_path: str) -> Path:
-        try:
-            base_path = Path(sys._MEIPASS)
-        except AttributeError:
-            base_path = Path(__file__).parent.parent
-        return base_path / relative_path
 
 
-    def set_geojson(self, geojson: dict[str, Any], title: str, lang: str = "ja", translation: dict[str, Any] = None) -> None:
+
+    def set_geojson(
+        self,
+        geojson: dict[str, Any],
+        title: str,
+        lang: str = "ja",
+        translation: dict[str, Any] = None,
+        preserve_view: bool = True,
+    ) -> None:
         self.last_geojson = geojson
         self.last_title = title
         self.current_lang = lang
         self.current_translation = translation
-        self.reload_map()
+        self.reload_map(preserve_view=preserve_view)
 
-    def reload_map(self) -> None:
+    def reload_map(self, preserve_view: bool = True) -> None:
+        initial_view = self.current_view if preserve_view else None
+        self._reload_map_with_view(initial_view)
+
+    def _reload_map_with_view(self, initial_view: Optional[dict[str, Any]]) -> None:
         geojson = self.last_geojson if self.last_geojson is not None else {"type": "FeatureCollection", "features": []}
         
-        svg_path = self.get_resource_path("assets/icons/layers.svg")
+        svg_path = get_resource_path("assets/icons/layers.svg")
         svg_base64 = ""
         if svg_path.exists():
             try:
@@ -89,7 +97,8 @@ class MapWidget(QWidget):
             lang=self.current_lang,
             translation=self.current_translation,
             tile_configs=self.tile_configs,
-            layers_svg_base64=svg_base64
+            layers_svg_base64=svg_base64,
+            initial_view=initial_view,
         )
 
         out = Path(tempfile.gettempdir()) / "n05_map_filter_exporter_preview.html"
@@ -105,7 +114,7 @@ class MapWidget(QWidget):
     def retranslate_map(self, lang: str, translation: dict[str, Any] = None) -> None:
         self.current_lang = lang
         self.current_translation = translation
-        self.reload_map()
+        self.reload_map(preserve_view=True)
 
 
 

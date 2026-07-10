@@ -11,7 +11,8 @@ def make_leaflet_html(
     lang: str = "ja",
     translation: dict[str, Any] = None,
     tile_configs: list[dict[str, str]] = None,
-    layers_svg_base64: str = ""
+    layers_svg_base64: str = "",
+    initial_view: dict[str, Any] | None = None,
 ) -> str:
     if tile_configs is None:
         tile_configs = [{
@@ -19,6 +20,7 @@ def make_leaflet_html(
             "attribution": "&copy; OpenStreetMap contributors"
         }]
     tile_configs_json = json.dumps(tile_configs, ensure_ascii=False)
+    initial_view_json = json.dumps(initial_view, ensure_ascii=False) if initial_view else "null"
     gj = json.dumps(geojson, ensure_ascii=False, separators=(",", ":"))
     feature_count = len(geojson.get("features", []))
     
@@ -31,6 +33,7 @@ def make_leaflet_html(
     no_attr_text = t.get("map_no_attr", "(No attributes)" if lang == "en" else "(属性なし)")
     select_btn_text = t.get("map_select_btn", "Select BBox" if lang == "en" else "範囲選択")
     selecting_btn_text = t.get("map_select_btn_active", "Selecting BBox (Drag on map)" if lang == "en" else "範囲選択中 (ドラッグして囲む)")
+    fetch_osm_text = t.get("map_fetch_osm_btn", "Fetch OSM" if lang == "en" else "OSM取得")
 
     return f"""<!doctype html>
 <html lang="{lang}">
@@ -67,6 +70,21 @@ def make_leaflet_html(
     background-size: 20px 20px;
     background-position: center;
   }}
+  .bbox-fetch-osm-btn {{
+    background: #228be6;
+    border: 2px solid #fff;
+    border-radius: 4px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+    color: #fff;
+    cursor: pointer;
+    font: 12px/1.2 sans-serif;
+    font-weight: 700;
+    padding: 5px 8px;
+    white-space: nowrap;
+  }}
+  .bbox-fetch-osm-btn:hover {{
+    background: #1c7ed6;
+  }}
 </style>
 </head>
 <body>
@@ -75,6 +93,7 @@ def make_leaflet_html(
 <script>
 const data = {gj};
 const lang = '{lang}';
+const initialView = {initial_view_json};
 const map = L.map('map', {{ zoomControl: true }});
 const tileConfigs = {tile_configs_json};
 tileConfigs.forEach(cfg => {{
@@ -105,8 +124,9 @@ data.features.forEach(function(f) {{
   var src = (f.properties && (f.properties._source || f.properties.source)) || "Imported Data";
   if (!layers[src]) {{
     var isOsm = (src === OSM_SOURCE);
-    var color = isOsm ? '#4c6ef5' : '#d6336c';
-    var weight = isOsm ? 4 : 5;
+    var isHistoryOutput = f.properties && f.properties._history_output;
+    var color = isHistoryOutput ? '#ffd43b' : (isOsm ? '#4c6ef5' : '#d6336c');
+    var weight = isHistoryOutput ? 6 : (isOsm ? 4 : 5);
     
     layers[src] = L.geoJSON(null, {{
       style: function() {{ return {{ color: color, weight: weight, opacity: 0.9 }}; }},
@@ -123,13 +143,23 @@ data.features.forEach(function(f) {{
   layers[src].addData(f);
 }});
 
-// Fit map bounds to show all active layers
 let bounds = L.latLngBounds();
 Object.keys(layers).forEach(function(src) {{
   const b = layers[src].getBounds();
   if (b.isValid()) bounds.extend(b);
 }});
-if (bounds.isValid()) map.fitBounds(bounds.pad(0.15)); else map.setView([44.8, 142.5], 9);
+if (initialView && Number.isFinite(initialView.lat) && Number.isFinite(initialView.lng) && Number.isFinite(initialView.zoom)) {{
+  map.setView([initialView.lat, initialView.lng], initialView.zoom);
+}} else {{
+  map.setView([44.8, 142.5], 9);
+}}
+
+function emitCurrentView() {{
+  const center = map.getCenter();
+  document.title = "VIEW:" + center.lat.toFixed(7) + "," + center.lng.toFixed(7) + "," + map.getZoom();
+}}
+map.on('moveend zoomend', emitCurrentView);
+setTimeout(emitCurrentView, 0);
 
 
 
@@ -138,6 +168,7 @@ let selectMode = false;
 let activeRect = null;
 let dragStartLatLng = null;
 let activeHandles = [];
+let fetchOsmMarker = null;
 
 const SelectControl = L.Control.extend({{
   options: {{ position: 'topleft' }},
@@ -173,6 +204,10 @@ new SelectControl().addTo(map);
 function clearHandles() {{
   activeHandles.forEach(h => map.removeLayer(h.marker));
   activeHandles = [];
+  if (fetchOsmMarker) {{
+    map.removeLayer(fetchOsmMarker);
+    fetchOsmMarker = null;
+  }}
 }}
 
 function createHandles() {{
@@ -218,6 +253,7 @@ function createHandles() {{
       
       // Sync other handles during drag
       syncHandlesExcept(pos);
+      updateFetchOsmButton();
       updateAppTitle(newBounds);
     }});
 
@@ -225,6 +261,27 @@ function createHandles() {{
       createHandles();
     }});
   }});
+  updateFetchOsmButton();
+}}
+
+function updateFetchOsmButton() {{
+  if (!activeRect) return;
+  const pos = activeRect.getBounds().getNorthEast();
+  if (!fetchOsmMarker) {{
+    const fetchIcon = L.divIcon({{
+      className: 'bbox-fetch-osm-icon',
+      html: '<button type="button" class="bbox-fetch-osm-btn">{fetch_osm_text}</button>',
+      iconSize: [80, 28],
+      iconAnchor: [-8, 28]
+    }});
+    fetchOsmMarker = L.marker(pos, {{ icon: fetchIcon, interactive: true }}).addTo(map);
+    fetchOsmMarker.on('click', function(e) {{
+      L.DomEvent.stopPropagation(e);
+      document.title = "FETCH_OSM";
+    }});
+  }} else {{
+    fetchOsmMarker.setLatLng(pos);
+  }}
 }}
 
 function syncHandlesExcept(draggingPos) {{
@@ -287,7 +344,7 @@ map.on('mouseup', function(e) {{
   updateAppTitle(bounds);
 }});
 
-window.setActiveBounds = function(w, s, e, n) {{
+window.setActiveBounds = function(w, s, e, n, fitMap) {{
   if (activeRect) {{
     map.removeLayer(activeRect);
     activeRect = null;
@@ -296,7 +353,9 @@ window.setActiveBounds = function(w, s, e, n) {{
   const bounds = L.latLngBounds([[s, w], [n, e]]);
   activeRect = L.rectangle(bounds, {{ color: "#3388ff", weight: 2, fillOpacity: 0.15 }}).addTo(map);
   createHandles();
-  map.fitBounds(bounds.pad(0.15));
+  if (fitMap === true) {{
+    map.fitBounds(bounds.pad(0.15));
+  }}
 }};
 
 window.clearActiveBounds = function() {{

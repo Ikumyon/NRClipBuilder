@@ -15,8 +15,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from PySide6.QtCore import Qt, QFile, QLocale
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import Qt, QFile, QLocale, QSize, QByteArray, QTimer
+from PySide6.QtGui import QIcon, QPixmap, QPainter, QPalette
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -29,7 +30,9 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QDialogButtonBox,
     QVBoxLayout,
-    QTreeWidgetItem,
+    QListWidgetItem,
+    QMenu,
+    QToolButton,
 )
 
 from core.geojson import geojson_to_overpass
@@ -37,17 +40,23 @@ from core.nrclip import geojson_to_nrclip_bytes
 
 # リファクタリングによる分割モジュールのインポート
 from core.geo_loader import FeatureStore, load_any, collect_fields, safe_str, write_json
+from core.osm_loader import fetch_osm_railways
 from core.geo_filter import (
     filter_features,
     geometry_is_line,
     clip_geometry_to_bbox,
 )
 from core.widgets import UiLoader, MapWidget, HAS_WEBENGINE
+from core.utils import get_resource_path, get_executable_dir, get_svg_icon
+from core.dialogs import AddMapDialog
+from core.config import AppConfig, HistoryManager
 
 APP_TITLE = "NRClipBuilder"
 MAX_TABLE_ROWS = 300
 
-DEFAULT_TRANSLATION: dict[str, str] = {}
+DEFAULT_TRANSLATION: dict[str, str] = {
+    "dialog_label_has_lines": "Include lines (railways, etc.)"
+}
 
 
 @dataclass
@@ -56,74 +65,9 @@ class LayerEntry:
     name: str
     checked: bool = True
     removable: bool = True
+    has_lines: bool = False
     on_check_changed: Callable[[bool], None] | None = None
     on_remove: Callable[[], None] | None = None
-
-
-def get_resource_path(relative_path: str) -> Path:
-    """PyInstallerの一時展開先フォルダ(_MEIPASS)を考慮してリソースの絶対パスを取得する"""
-    try:
-        base_path = Path(sys._MEIPASS)
-    except AttributeError:
-        base_path = Path(__file__).parent
-    return base_path / relative_path
-
-
-def get_executable_dir() -> Path:
-    """PyInstallerでパッケージ化されている場合は実行ファイルの場所、開発時はスクリプトの場所を返す"""
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent
-    return Path(__file__).parent
-
-
-class AddMapDialog(QDialog):
-    def __init__(self, parent=None, translation=None):
-        super().__init__(parent)
-        self.translation = translation or {}
-        self.setWindowTitle(self.tr_msg("dialog_add_map_title", "背景地図を追加"))
-        self.resize(400, 200)
-
-        layout = QVBoxLayout(self)
-        form = QFormLayout()
-
-        self.name_edit = QLineEdit(self)
-        self.name_edit.setPlaceholderText(self.tr_msg("dialog_map_name_placeholder", "例: 国土地理院地図"))
-        self.url_edit = QLineEdit(self)
-        self.url_edit.setPlaceholderText(self.tr_msg("dialog_map_url_placeholder", "例: https://example.com/{z}/{x}/{y}.png"))
-        self.attr_edit = QLineEdit(self)
-        self.attr_edit.setPlaceholderText(self.tr_msg("dialog_map_attr_placeholder", "例: &copy; Map providers"))
-
-        form.addRow(self.tr_msg("dialog_label_map_name", "背景地図名"), self.name_edit)
-        form.addRow(self.tr_msg("dialog_label_map_url", "タイルURL"), self.url_edit)
-        form.addRow(self.tr_msg("dialog_label_map_attr", "著作権表記"), self.attr_edit)
-        layout.addLayout(form)
-
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
-
-    def tr_msg(self, key: str, fallback: str) -> str:
-        val = self.translation.get(key, fallback)
-        return val if val else fallback
-
-    def accept(self):
-        name = self.name_edit.text().strip()
-        url = self.url_edit.text().strip()
-        if not name or not url:
-            QMessageBox.warning(self, self.tr_msg("msg_validation_error", "警告"), self.tr_msg("msg_validation_empty", "名前とURLを入力してください。"))
-            return
-        if not all(p in url for p in ["{z}", "{x}", "{y}"]):
-            QMessageBox.warning(self, self.tr_msg("msg_validation_error", "警告"), self.tr_msg("msg_validation_invalid_url", "タイルURLには {z}, {x}, {y} のプレースホルダーを含める必要があります。"))
-            return
-        super().accept()
-
-    def get_data(self) -> tuple[str, str, str]:
-        return (
-            self.name_edit.text().strip(),
-            self.url_edit.text().strip(),
-            self.attr_edit.text().strip()
-        )
 
 
 
@@ -134,20 +78,23 @@ class MainWindow(QMainWindow):
         self.filtered: list[dict[str, Any]] = []
         self.last_output_dir = Path.cwd()
 
+        # 設定・履歴管理クラスの初期化
+        config_path = get_executable_dir() / "app_config.json"
+        self.app_config = AppConfig(config_path)
+        history_path = get_executable_dir() / "bbox_history.json"
+        self.history_manager = HistoryManager(history_path)
+
         # UIのロード
         loader = UiLoader(self)
-        icon_path = get_resource_path("icon.ico")
-        if icon_path.exists():
-            self.setWindowIcon(QIcon(str(icon_path)))
         ui_path = get_resource_path("ui/main_window.ui")
         ui_file = QFile(str(ui_path))
         if not ui_file.open(QFile.ReadOnly):
             raise RuntimeError(f"UIファイルを開けませんでした: {ui_path}")
         loader.load(ui_file)
         ui_file.close()
+        self.apply_app_icon()
 
         # 言語リストのスキャン
-        self.config_file = get_executable_dir() / "app_config.json"
         self.available_langs = self.scan_languages()
 
         # 言語初期設定とロード
@@ -190,12 +137,12 @@ class MainWindow(QMainWindow):
         # BBox 関連の初期化とシグナル接続
         self.selected_bbox = None
         self.map_loaded = False
-        self.history_file = get_executable_dir() / "bbox_history.json"
-        self.history_data = []
 
         # 背景地図の初期化
-        self.custom_maps: list[dict[str, str]] = []
+        self.registered_maps: list[dict[str, str]] = []
+        self.added_maps: set[str] = set()
         self.active_maps: set[str] = {"OpenStreetMap (OSM)"}
+        self.registered_lines: list[str] = []
         
         # 独立したレイヤーの管理
         self.layers: dict[str, FeatureStore] = {}
@@ -206,13 +153,32 @@ class MainWindow(QMainWindow):
         # 統一レイヤーエントリ
         self.layer_entries: list[LayerEntry] = []
 
-        self.add_map_btn.clicked.connect(self.on_add_map_clicked)
-        self.add_line_btn.clicked.connect(self.on_add_line_clicked)
+        self.left_add_map_btn.clicked.connect(self.on_add_map_clicked)
+        self.add_map_menu = QMenu(self)
+        self.registered_map_btn.setMenu(self.add_map_menu)
+        self.registered_map_btn.setPopupMode(QToolButton.InstantPopup)
+        self.add_map_menu.aboutToShow.connect(self.update_add_map_menu)
+
+        self.left_add_line_btn.clicked.connect(self.on_add_line_clicked)
+        self.registered_line_menu = QMenu(self)
+        self.registered_line_btn.setMenu(self.registered_line_menu)
+        self.registered_line_btn.setPopupMode(QToolButton.InstantPopup)
+        self.registered_line_menu.aboutToShow.connect(self.update_registered_line_menu)
+
         self.add_history_btn.clicked.connect(self.on_add_history_clicked)
         self.remove_layer_btn.clicked.connect(self.on_remove_layer_clicked)
         
-        self.layer_tree.itemChanged.connect(self.on_layer_item_changed)
-        self.layer_tree.itemSelectionChanged.connect(self.on_layer_selection_changed)
+        self.layer_list.itemChanged.connect(self.on_layer_item_changed)
+        self.layer_list.itemSelectionChanged.connect(self.on_layer_selection_changed)
+        self.layer_list.model().rowsMoved.connect(self.on_layers_moved)
+        
+        self.railway_rail_check.clicked.connect(self.apply_filter)
+        self.railway_subway_check.clicked.connect(self.apply_filter)
+        self.railway_tram_check.clicked.connect(self.apply_filter)
+        self.railway_light_rail_check.clicked.connect(self.apply_filter)
+        self.railway_monorail_check.clicked.connect(self.apply_filter)
+        self.railway_funicular_check.clicked.connect(self.apply_filter)
+        self.railway_abandoned_check.clicked.connect(self.apply_filter)
 
 
         if HAS_WEBENGINE:
@@ -234,6 +200,17 @@ class MainWindow(QMainWindow):
         self.load_history_from_file()
         self.load_config_from_file()
 
+        self.filter_update_timer = QTimer(self)
+        self.filter_update_timer.setSingleShot(True)
+        self.filter_update_timer.setInterval(500)
+        self.filter_update_timer.timeout.connect(self.apply_filter)
+        self.keyword_edit.textChanged.connect(self.schedule_filter_update)
+        self.field_edit.textChanged.connect(self.schedule_filter_update)
+        self.exclude_edit.textChanged.connect(self.schedule_filter_update)
+        self.regex_check.toggled.connect(self.schedule_filter_update)
+        self.and_radio.toggled.connect(self.schedule_filter_update)
+        self.or_radio.toggled.connect(self.schedule_filter_update)
+
         # メニューアクションの接続
         self.action_open.setVisible(False)
         self.action_export_geojson.triggered.connect(self.export_geojson)
@@ -248,7 +225,8 @@ class MainWindow(QMainWindow):
 
         # ステータスバーと初期化
         self.statusBar().showMessage(self.tr_msg("msg_select_file"))
-        self._refresh_map([])
+        self.apply_active_map()
+        self.apply_filter()
 
     def scan_languages(self) -> list[tuple[str, str]]:
         loc_dir = get_executable_dir() / "localisation"
@@ -291,15 +269,14 @@ class MainWindow(QMainWindow):
             return None
 
         # 1. 設定ファイルからの読み込みとマッチング
-        if self.config_file.exists():
-            try:
-                config = json.loads(self.config_file.read_text(encoding="utf-8"))
-                if "lang" in config:
-                    matched = match_lang(str(config["lang"]))
-                    if matched:
-                        return matched
-            except Exception:
-                pass
+        try:
+            config = self.app_config.load()
+            if "lang" in config:
+                matched = match_lang(str(config["lang"]))
+                if matched:
+                    return matched
+        except Exception:
+            pass
                 
         # 2. システムロケールからの読み込みとマッチング
         sys_lang = QLocale.system().name().lower().replace("_", "-")
@@ -370,9 +347,9 @@ class MainWindow(QMainWindow):
         self.label_junction_spacing.setText(self.tr_msg("label_junction_spacing"))
         self.label_max_spacing.setText(self.tr_msg("label_max_spacing"))
         self.label_straight_tolerance.setText(self.tr_msg("label_straight_tolerance"))
-        self.add_line_btn.setText(self.tr_msg("add_line_btn"))
+        self.left_add_line_btn.setText(self.tr_msg("add_line_btn"))
         self.add_history_btn.setText(self.tr_msg("add_history_btn"))
-        self.add_map_btn.setText(self.tr_msg("add_map_btn"))
+        self.left_add_map_btn.setText(self.tr_msg("add_map_btn"))
         self.remove_layer_btn.setText(self.tr_msg("remove_layer_btn"))
         self.layer_group.setTitle(self.tr_msg("layer_group"))
         
@@ -407,6 +384,23 @@ class MainWindow(QMainWindow):
         
         if hasattr(self, "map_widget"):
             self.map_widget.retranslate_map(self.current_lang.split("-")[0], self.translation)
+        
+        self.setup_icons()
+
+    def setup_icons(self) -> None:
+        btn_text_color = self.palette().color(QPalette.ButtonText).name()
+        icons_dir = get_resource_path("assets/icons")
+        
+        self.left_add_line_btn.setIcon(get_svg_icon(icons_dir / "spline.svg", btn_text_color))
+        self.left_add_map_btn.setIcon(get_svg_icon(icons_dir / "map-plus.svg", btn_text_color))
+        self.add_history_btn.setIcon(get_svg_icon(icons_dir / "history.svg", btn_text_color))
+        self.remove_layer_btn.setIcon(get_svg_icon(icons_dir / "trash-2.svg", btn_text_color))
+        
+        icon_size = QSize(16, 16)
+        self.left_add_line_btn.setIconSize(icon_size)
+        self.left_add_map_btn.setIconSize(icon_size)
+        self.add_history_btn.setIconSize(icon_size)
+        self.remove_layer_btn.setIconSize(icon_size)
 
     def update_window_title(self) -> None:
         active_layer_name = self.get_selected_layer_name()
@@ -428,7 +422,22 @@ class MainWindow(QMainWindow):
     def log_msg(self, msg: str) -> None:
         self.statusBar().showMessage(msg, 5000)
 
-    def load_path(self, path: Path) -> None:
+    def apply_app_icon(self) -> None:
+        icon_path = get_resource_path("icon.ico")
+        if not icon_path.exists():
+            return
+        icon = QIcon(str(icon_path.resolve()))
+        if icon.isNull():
+            return
+        self.setWindowIcon(icon)
+        app = QApplication.instance()
+        if app:
+            app.setWindowIcon(icon)
+
+    def schedule_filter_update(self, *args: Any) -> None:
+        self.filter_update_timer.start()
+
+    def load_path(self, path: Path, checked: bool = True, save_config: bool = True) -> None:
         try:
             self.log_msg(self.tr_msg("msg_loading").format(path=path))
             QApplication.setOverrideCursor(Qt.WaitCursor)
@@ -442,13 +451,25 @@ class MainWindow(QMainWindow):
                 f["properties"]["_source"] = layer_name
                 
             self.layers[layer_name] = store
-            self.active_layers.add(layer_name)
+            if checked:
+                self.active_layers.add(layer_name)
+            else:
+                self.active_layers.discard(layer_name)
             self.last_output_dir = path.parent
             
             self.log_msg(self.tr_msg("msg_load_success").format(count=len(store.features)))
             if store.crs_note:
                 self.log_msg(store.crs_note)
             
+            # 登録済み線データへ追加
+            path_str = str(path.resolve())
+            if path_str in self.registered_lines:
+                self.registered_lines.remove(path_str)
+            self.registered_lines.insert(0, path_str)
+            
+            if save_config:
+                self.save_config_to_file()
+
             self.update_layer_tree()
             self.select_tree_layer(layer_name)
             self.apply_filter()
@@ -457,29 +478,35 @@ class MainWindow(QMainWindow):
             self.log_msg(self.tr_msg("dialog_error") + str(exc))
             QMessageBox.critical(self, self.tr_msg("msg_load_error_title"), f"{exc}\n\n{traceback.format_exc()}")
 
-    def apply_filter(self) -> None:
+    def apply_filter(self, *args: Any, preserve_view: bool = True) -> None:
         try:
             total_count = 0
             for name, store in self.layers.items():
                 features = [f for f in store.features if geometry_is_line(f.get("geometry") or {})]
-                filtered = filter_features(
-                    features,
-                    keywords_text=self.keyword_edit.text(),
-                    fields_text=self.field_edit.text(),
-                    regex=self.regex_check.isChecked(),
-                    match_all=self.and_radio.isChecked(),
-                    exclude_text=self.exclude_edit.text(),
-                )
+                if "osm" in name.lower() or "overpass" in name.lower():
+                    filtered = self.filter_osm_features(features)
+                else:
+                    filtered = filter_features(
+                        features,
+                        keywords_text=self.keyword_edit.text(),
+                        fields_text=self.field_edit.text(),
+                        regex=self.regex_check.isChecked(),
+                        match_all=self.and_radio.isChecked(),
+                        exclude_text=self.exclude_edit.text(),
+                    )
                 self.layers_filtered[name] = filtered
                 total_count += len(store.features)
 
             map_features = []
             filtered_count = 0
-            for name in self.active_layers:
-                if name in self.layers_filtered:
-                    map_features.extend(self.layers_filtered[name])
-                    filtered_count += len(self.layers_filtered[name])
-            self._refresh_map(map_features)
+            for entry in self.layer_entries:
+                if entry.name == "過去の出力履歴" and entry.checked:
+                    map_features.extend(self.get_history_line_features())
+                elif entry.checked and entry.name in self.layers_filtered:
+                    features = self.layers_filtered[entry.name]
+                    map_features.extend(features)
+                    filtered_count += len(features)
+            self._refresh_map(map_features, preserve_view=preserve_view)
 
             self.log_msg(self.tr_msg("msg_filtered_count").format(filtered=filtered_count, total=total_count))
 
@@ -495,39 +522,146 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.critical(self, self.tr_msg("msg_filter_error_title"), f"{exc}\n\n{traceback.format_exc()}")
 
-    def apply_active_map(self) -> None:
+    def apply_active_map(self, reload_map: bool = True, preserve_view: bool = True) -> None:
         configs = []
-        if "OpenStreetMap (OSM)" in self.active_maps:
-            configs.append({
-                "url": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-                "attribution": "&copy; OpenStreetMap contributors"
-            })
-        for custom_map in self.custom_maps:
-            name = custom_map.get("name", "")
-            if name in self.active_maps:
+        registered_map_by_name = {
+            custom_map.get("name", ""): custom_map
+            for custom_map in self.registered_maps
+        }
+        for entry in self.layer_entries:
+            if not entry.checked or entry.name not in self.active_maps:
+                continue
+            if entry.name == "OpenStreetMap (OSM)":
+                configs.append({
+                    "url": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                    "attribution": "&copy; OpenStreetMap contributors"
+                })
+            elif entry.name in registered_map_by_name:
+                custom_map = registered_map_by_name[entry.name]
                 configs.append({
                     "url": custom_map.get("url", ""),
                     "attribution": custom_map.get("attribution", "")
                 })
         self.map_widget.set_tile_configs(configs)
-        self.map_widget.reload_map()
+        if reload_map:
+            self.map_widget.reload_map(preserve_view=preserve_view)
+
+    def update_registered_line_menu(self) -> None:
+        self.registered_line_menu.clear()
+        
+        if self.registered_lines:
+            for path_str in self.registered_lines:
+                path = Path(path_str)
+                name = path.name
+                action = self.registered_line_menu.addAction(name)
+                action.setToolTip(path_str)
+                action.triggered.connect(lambda checked=False, p=path: self.load_path(p))
+        else:
+            no_history_text = "履歴なし" if self.current_lang.startswith("ja") else "No History"
+            action = self.registered_line_menu.addAction(no_history_text)
+            action.setEnabled(False)
+
+    def fetch_osm_railways_from_bbox(self) -> None:
+        if not self.selected_bbox:
+            QMessageBox.warning(
+                self,
+                self.tr_msg("msg_fetch_osm_title"),
+                self.tr_msg("msg_fetch_osm_no_bbox"),
+            )
+            return
+
+        layer_name = "OSM線路データ"
+        try:
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            self.log_msg(self.tr_msg("msg_fetch_osm_loading"))
+            store = fetch_osm_railways(self.selected_bbox)
+            for feature in store.features:
+                feature.setdefault("properties", {})["_source"] = layer_name
+
+            if layer_name in self.layers:
+                self.layers[layer_name].cleanup()
+            self.layers[layer_name] = store
+            self.active_layers.add(layer_name)
+            self.layers_filtered.pop(layer_name, None)
+
+            self.update_layer_tree()
+            self.select_tree_layer(layer_name)
+            self.apply_filter()
+            self.save_config_to_file()
+            self.log_msg(self.tr_msg("msg_fetch_osm_success").format(count=len(store.features)))
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                self.tr_msg("msg_fetch_osm_title"),
+                f"{self.tr_msg('dialog_error')}{exc}\n\n{traceback.format_exc()}",
+            )
+        finally:
+            QApplication.restoreOverrideCursor()
+
+    def update_add_map_menu(self) -> None:
+        self.add_map_menu.clear()
+        
+        # 登録済みマップ一覧をメニュー項目として追加
+        if self.registered_maps:
+            for map_data in self.registered_maps:
+                name = map_data.get("name", "")
+                action = self.add_map_menu.addAction(name)
+                action.triggered.connect(lambda checked=False, data=map_data: self.add_map_from_registered(data))
+
+    def add_map_from_registered(self, map_data: dict[str, str]) -> None:
+        name = map_data.get("name", "")
+        self.added_maps.add(name)
+        self.active_maps.add(name)
+        self.apply_active_map()
+        self.save_config_to_file()
+        self.update_layer_tree()
+        self.log_msg(f"マップを追加しました: {name}")
+
+    def filter_osm_features(self, features: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        allowed_types = set()
+        if self.railway_rail_check.isChecked():
+            allowed_types.add("rail")
+        if self.railway_subway_check.isChecked():
+            allowed_types.add("subway")
+        if self.railway_tram_check.isChecked():
+            allowed_types.add("tram")
+        if self.railway_light_rail_check.isChecked():
+            allowed_types.add("light_rail")
+        if self.railway_monorail_check.isChecked():
+            allowed_types.add("monorail")
+        if self.railway_funicular_check.isChecked():
+            allowed_types.add("funicular")
+            
+        abandoned_types = {"abandoned", "disused", "construction", "proposed"}
+        show_abandoned = self.railway_abandoned_check.isChecked()
+
+        result = []
+        for feat in features:
+            props = feat.get("properties") or {}
+            rw = props.get("railway", "")
+            if rw in allowed_types:
+                result.append(feat)
+            elif show_abandoned and rw in abandoned_types:
+                result.append(feat)
+        return result
 
     def on_add_map_clicked(self) -> None:
         dialog = AddMapDialog(self, self.translation)
         if dialog.exec() == QDialog.Accepted:
-            name, url, attr = dialog.get_data()
+            name, url, attr, has_lines = dialog.get_data()
             existing_idx = -1
-            for i, custom_map in enumerate(self.custom_maps):
+            for i, custom_map in enumerate(self.registered_maps):
                 if custom_map.get("name") == name:
                     existing_idx = i
                     break
             
-            map_data = {"name": name, "url": url, "attribution": attr}
+            map_data = {"name": name, "url": url, "attribution": attr, "has_lines": has_lines}
             if existing_idx >= 0:
-                self.custom_maps[existing_idx] = map_data
+                self.registered_maps[existing_idx] = map_data
             else:
-                self.custom_maps.append(map_data)
+                self.registered_maps.append(map_data)
             
+            self.added_maps.add(name)
             self.active_maps.add(name)
             self.apply_active_map()
             self.save_config_to_file()
@@ -550,13 +684,14 @@ class MainWindow(QMainWindow):
         except ValueError:
             pass
 
-    def update_map_active_bbox(self) -> None:
+    def update_map_active_bbox(self, fit_map: bool = False) -> None:
         if not getattr(self, "map_loaded", False):
             return
         if self.selected_bbox:
             w, s, e, n = self.selected_bbox
             if HAS_WEBENGINE:
-                self.map_widget.web.page().runJavaScript(f"window.setActiveBounds({w}, {s}, {e}, {n});")
+                fit_js = "true" if fit_map else "false"
+                self.map_widget.web.page().runJavaScript(f"window.setActiveBounds({w}, {s}, {e}, {n}, {fit_js});")
         else:
             if HAS_WEBENGINE:
                 self.map_widget.web.page().runJavaScript("window.clearActiveBounds();")
@@ -576,8 +711,41 @@ class MainWindow(QMainWindow):
                 name_esc = name.replace("'", "\\'")
                 page.runJavaScript(f"window.addHistoryBounds({w}, {s}, {e}, {n}, '{name_esc}');")
 
+    def get_history_line_features(self) -> list[dict[str, Any]]:
+        features: list[dict[str, Any]] = []
+        for item in self.history_data:
+            geojson = item.get("geojson")
+            if not isinstance(geojson, dict):
+                continue
+            raw_features = geojson.get("features")
+            if not isinstance(raw_features, list):
+                continue
+            history_name = item.get("name", "")
+            for feature in raw_features:
+                if not isinstance(feature, dict):
+                    continue
+                if not geometry_is_line(feature.get("geometry") or {}):
+                    continue
+                new_feature = feature.copy()
+                props = dict(new_feature.get("properties") or {})
+                props["_source"] = "過去の出力履歴"
+                props["_history_output"] = True
+                props["_history_name"] = history_name
+                new_feature["properties"] = props
+                features.append(new_feature)
+        return features
+
     def on_title_changed(self, title: str) -> None:
-        if title.startswith("BBOX:"):
+        if title.startswith("VIEW:"):
+            parts = title[5:].split(",")
+            if len(parts) == 3:
+                try:
+                    lat, lng = map(float, parts[:2])
+                    zoom = int(float(parts[2]))
+                    self.map_widget.current_view = {"lat": lat, "lng": lng, "zoom": zoom}
+                except ValueError:
+                    pass
+        elif title.startswith("BBOX:"):
             parts = title[5:].split(",")
             if len(parts) == 4:
                 try:
@@ -589,6 +757,8 @@ class MainWindow(QMainWindow):
                     self.max_lat_edit.setText(f"{n:.7f}")
                 except ValueError:
                     pass
+        elif title == "FETCH_OSM":
+            self.fetch_osm_railways_from_bbox()
         elif title.startswith("SELECT_HISTORY:"):
             parts = title[15:].split(",")
             if len(parts) == 5:
@@ -600,7 +770,7 @@ class MainWindow(QMainWindow):
                     self.min_lat_edit.setText(f"{s:.7f}")
                     self.max_lon_edit.setText(f"{e:.7f}")
                     self.max_lat_edit.setText(f"{n:.7f}")
-                    self.update_map_active_bbox()
+                    self.update_map_active_bbox(fit_map=True)
                     self.select_history_row_by_name(name)
                 except ValueError:
                     pass
@@ -621,7 +791,45 @@ class MainWindow(QMainWindow):
         if HAS_WEBENGINE:
             self.map_widget.web.page().runJavaScript("window.clearActiveBounds();")
 
+    @property
+    def history_data(self) -> list[dict[str, Any]]:
+        return self.history_manager.data
+
+    @history_data.setter
+    def history_data(self, val: list[dict[str, Any]]) -> None:
+        self.history_manager.data = val
+
     def save_config_to_file(self) -> None:
+        layers_data = []
+        for entry in self.layer_entries:
+            if entry.name == "OpenStreetMap (OSM)":
+                layers_data.append({
+                    "type": "map",
+                    "name": entry.name,
+                    "checked": entry.checked
+                })
+            elif entry.name == "過去の出力履歴":
+                layers_data.append({
+                    "type": "history",
+                    "name": entry.name,
+                    "checked": entry.checked
+                })
+            elif entry.name in self.layers:
+                store = self.layers[entry.name]
+                path_str = str(store.source_path.resolve()) if store.source_path else ""
+                layers_data.append({
+                    "type": "line",
+                    "name": entry.name,
+                    "path": path_str,
+                    "checked": entry.checked
+                })
+            else:
+                layers_data.append({
+                    "type": "map",
+                    "name": entry.name,
+                    "checked": entry.checked
+                })
+
         config = {
             "lang": self.current_lang,
             "keywords": self.keyword_edit.text(),
@@ -638,19 +846,17 @@ class MainWindow(QMainWindow):
             "junction_spacing": self.junction_spacing_spin.value(),
             "max_spacing": self.max_spacing_spin.value(),
             "straight_tolerance": self.straight_tolerance_spin.value(),
-            "custom_maps": self.custom_maps,
-            "active_maps": list(self.active_maps),
+            "registered_maps": self.registered_maps,
+            "layers": layers_data,
+            "registered_lines": self.registered_lines,
         }
-        try:
-            self.config_file.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
-        except Exception:
-            pass
+        self.app_config.save(config)
 
     def load_config_from_file(self) -> None:
-        if not self.config_file.exists():
-            return
         try:
-            config = json.loads(self.config_file.read_text(encoding="utf-8"))
+            config = self.app_config.load()
+            if not config:
+                return
             self.keyword_edit.setText(config.get("keywords", ""))
             self.field_edit.setText(config.get("fields", ""))
             self.exclude_edit.setText(config.get("exclude", ""))
@@ -675,35 +881,73 @@ class MainWindow(QMainWindow):
             self.max_spacing_spin.setValue(config.get("max_spacing", 200.0))
             self.straight_tolerance_spin.setValue(config.get("straight_tolerance", 0.5))
             
-            # Tile custom maps configuration
-            custom_maps = config.get("custom_maps", config.get("custom_layers", []))
-            self.custom_maps = custom_maps
+            self.registered_maps = config.get("registered_maps", [])
+            self.registered_lines = config.get("registered_lines", [])
+
+            layers_data = config.get("layers", [])
             
-            active_maps = config.get("active_maps")
-            if active_maps is not None:
-                self.active_maps = set(active_maps)
-            else:
-                legacy_active = config.get("active_map", config.get("active_layer", "OpenStreetMap (OSM)"))
-                self.active_maps = {legacy_active}
+            self.added_maps = set()
+            self.active_maps = set()
+            self.active_layers = set()
+            self.show_history_bounds = False
+
+            # 線データ以外を先に読み込む
+            for layer in layers_data:
+                l_type = layer.get("type")
+                name = layer.get("name")
+                checked = layer.get("checked", False)
+                
+                if l_type == "map":
+                    if name != "OpenStreetMap (OSM)":
+                        self.added_maps.add(name)
+                    if checked:
+                        self.active_maps.add(name)
+                elif l_type == "history":
+                    self.show_history_bounds = checked
+
+            # 線データを自動ロード（save_config=Falseで保存ループを防ぐ）
+            for layer in layers_data:
+                l_type = layer.get("type")
+                checked = layer.get("checked", False)
+                if l_type == "line":
+                    path_str = layer.get("path")
+                    if path_str:
+                        path = Path(path_str)
+                        if path.exists():
+                            self.load_path(path, checked=checked, save_config=False)
+
+            self.update_layer_tree()
+            self.restore_layer_order_from_config(layers_data)
             self.update_layer_tree()
             self.apply_active_map()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Error loading config: {e}")
+
+    def restore_layer_order_from_config(self, layers_data: list[dict[str, Any]]) -> None:
+        entry_by_name = {entry.name: entry for entry in self.layer_entries}
+        ordered_entries: list[LayerEntry] = []
+        used_names: set[str] = set()
+
+        for layer in layers_data:
+            name = layer.get("name")
+            entry = entry_by_name.get(name)
+            if entry is None or entry.name in used_names:
+                continue
+            ordered_entries.append(entry)
+            used_names.add(entry.name)
+
+        for entry in self.layer_entries:
+            if entry.name not in used_names:
+                ordered_entries.append(entry)
+
+        self.layer_entries = ordered_entries
 
     def load_history_from_file(self) -> None:
-        self.history_data = []
-        if self.history_file.exists():
-            try:
-                self.history_data = json.loads(self.history_file.read_text(encoding="utf-8"))
-            except Exception:
-                pass
+        self.history_manager.load()
         self.refresh_history_table()
 
     def save_history_to_file(self) -> None:
-        try:
-            self.history_file.write_text(json.dumps(self.history_data, ensure_ascii=False, indent=2), encoding="utf-8")
-        except Exception:
-            pass
+        self.history_manager.save()
 
     def refresh_history_table(self) -> None:
         self.history_table.setRowCount(0)
@@ -799,20 +1043,18 @@ class MainWindow(QMainWindow):
             return False
         return True
 
-    def add_to_history(self, name: str, bbox: tuple[float, float, float, float]) -> None:
-        import datetime
-        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.history_data = [item for item in self.history_data if item.get("name") != name and tuple(item.get("bbox", [])) != bbox]
-        self.history_data.insert(0, {
-            "name": name,
-            "bbox": list(bbox),
-            "timestamp": now
-        })
-        self.save_history_to_file()
+    def add_to_history(
+        self,
+        name: str,
+        bbox: tuple[float, float, float, float],
+        geojson: dict[str, Any] | None = None,
+    ) -> None:
+        self.history_manager.add(name, bbox, geojson=geojson)
         self.refresh_history_table()
         self.update_map_history_bboxes()
+        self.apply_filter()
 
-    def _refresh_map(self, features: list[dict[str, Any]]) -> None:
+    def _refresh_map(self, features: list[dict[str, Any]], preserve_view: bool = True) -> None:
         title = self.tr_msg("msg_filtered_count").split(":")[0] if features else "No data"
         if self.store.source_path:
             title = self.store.source_path.name
@@ -820,7 +1062,8 @@ class MainWindow(QMainWindow):
             {"type": "FeatureCollection", "features": features},
             title=title,
             lang=self.current_lang.split("-")[0],
-            translation=self.translation
+            translation=self.translation,
+            preserve_view=preserve_view,
         )
 
     def _refresh_table(self, features: list[dict[str, Any]]) -> None:
@@ -977,7 +1220,11 @@ class MainWindow(QMainWindow):
             )
             path.write_bytes(data)
             self.last_output_dir = path.parent
-            self.add_to_history(name, self.selected_bbox)
+            self.add_to_history(
+                name,
+                self.selected_bbox,
+                geojson={"type": "FeatureCollection", "features": line_features},
+            )
             self.log_msg(self.tr_msg("msg_save_success_nrclip").format(path=path).replace("\n", " "))
             QMessageBox.information(self, self.tr_msg("msg_save_success_title"), self.tr_msg("msg_save_success_nrclip").format(path=path))
         except Exception as exc:
@@ -1013,13 +1260,14 @@ class MainWindow(QMainWindow):
         self.show_history_bounds = True
         self.update_layer_tree()
         self.update_map_history_bboxes()
+        self.apply_filter()
 
     def on_remove_layer_clicked(self) -> None:
-        selected = self.layer_tree.selectedItems()
+        selected = self.layer_list.selectedItems()
         if not selected:
             return
         item = selected[0]
-        idx = item.data(0, Qt.UserRole)
+        idx = item.data(Qt.UserRole)
         if idx is None or idx >= len(self.layer_entries):
             return
         entry = self.layer_entries[idx]
@@ -1051,17 +1299,20 @@ class MainWindow(QMainWindow):
             name="OpenStreetMap (OSM)",
             checked=("OpenStreetMap (OSM)" in self.active_maps),
             removable=False,
+            has_lines=True,
         )
         osm_entry.on_check_changed = _make_map_check("OpenStreetMap (OSM)")
         entries.append(osm_entry)
 
-        # カスタムマップ
-        for cm in self.custom_maps:
+        # 登録済みマップ
+        for cm in self.registered_maps:
             cm_name = cm.get("name", "")
+            if cm_name not in self.added_maps:
+                continue
 
             def _make_map_remove(n: str = cm_name) -> Callable[[], None]:
                 def remove() -> None:
-                    self.custom_maps = [m for m in self.custom_maps if m.get("name") != n]
+                    self.added_maps.discard(n)
                     self.active_maps.discard(n)
                     self.apply_active_map()
                     self.save_config_to_file()
@@ -1071,6 +1322,7 @@ class MainWindow(QMainWindow):
                 name=cm_name,
                 checked=(cm_name in self.active_maps),
                 removable=True,
+                has_lines=cm.get("has_lines", False),
                 on_remove=_make_map_remove(),
             )
             entry.on_check_changed = _make_map_check(cm_name)
@@ -1101,13 +1353,13 @@ class MainWindow(QMainWindow):
                 name=ln,
                 checked=(ln in self.active_layers),
                 removable=True,
+                has_lines=True,
                 on_check_changed=_make_line_check(),
                 on_remove=_make_line_remove(),
             ))
 
         # --- 履歴 ---
-        # 既存の layer_entries に履歴が含まれている場合のみ追加
-        has_history = any(e.name == "過去の出力履歴" for e in self.layer_entries)
+        has_history = self.show_history_bounds
         if has_history:
             def _history_check(checked: bool) -> None:
                 self.show_history_bounds = checked
@@ -1116,11 +1368,13 @@ class MainWindow(QMainWindow):
                 else:
                     if HAS_WEBENGINE:
                         self.map_widget.web.page().runJavaScript("window.clearHistoryBounds();")
+                self.apply_filter()
 
             def _history_remove() -> None:
                 self.show_history_bounds = False
                 if HAS_WEBENGINE:
                     self.map_widget.web.page().runJavaScript("window.clearHistoryBounds();")
+                self.apply_filter()
 
             entries.append(LayerEntry(
                 name="過去の出力履歴",
@@ -1130,31 +1384,94 @@ class MainWindow(QMainWindow):
                 on_remove=_history_remove,
             ))
 
-        self.layer_entries = entries
+        entry_by_name = {entry.name: entry for entry in entries}
+        ordered_entries: list[LayerEntry] = []
+        used_names: set[str] = set()
+
+        for old_entry in self.layer_entries:
+            entry = entry_by_name.get(old_entry.name)
+            if entry is None:
+                continue
+            ordered_entries.append(entry)
+            used_names.add(entry.name)
+
+        for entry in entries:
+            if entry.name not in used_names:
+                ordered_entries.append(entry)
+
+        self.layer_entries = ordered_entries
 
     def update_layer_tree(self) -> None:
         self._rebuild_layer_entries()
-        self.layer_tree.blockSignals(True)
-        self.layer_tree.clear()
+        self.layer_list.blockSignals(True)
+        self.layer_list.clear()
         for i, entry in enumerate(self.layer_entries):
-            item = QTreeWidgetItem(self.layer_tree, [entry.name])
-            item.setCheckState(0, Qt.Checked if entry.checked else Qt.Unchecked)
-            item.setData(0, Qt.UserRole, i)
-        self.layer_tree.blockSignals(False)
+            item = QListWidgetItem(entry.name, self.layer_list)
+            item.setCheckState(Qt.Checked if entry.checked else Qt.Unchecked)
+            item.setData(Qt.UserRole, i)
+        self.layer_list.blockSignals(False)
 
-    def on_layer_item_changed(self, item: QTreeWidgetItem, column: int) -> None:
-        idx = item.data(0, Qt.UserRole)
+    def on_layer_item_changed(self, item: QListWidgetItem) -> None:
+        idx = item.data(Qt.UserRole)
         if idx is None or idx >= len(self.layer_entries):
             return
         entry = self.layer_entries[idx]
-        checked = (item.checkState(0) == Qt.Checked)
+        checked = (item.checkState() == Qt.Checked)
         entry.checked = checked
         if entry.on_check_changed:
             entry.on_check_changed(checked)
 
+    def on_layers_moved(self, parent, start, end, destination, row) -> None:
+        new_entries = []
+        for r in range(self.layer_list.count()):
+            item = self.layer_list.item(r)
+            idx = item.data(Qt.UserRole)
+            if idx is not None and idx < len(self.layer_entries):
+                new_entries.append(self.layer_entries[idx])
+        
+        self.layer_entries = new_entries
+        
+        # インデックスの振り直し
+        self.layer_list.blockSignals(True)
+        for r in range(self.layer_list.count()):
+            item = self.layer_list.item(r)
+            item.setData(Qt.UserRole, r)
+        self.layer_list.blockSignals(False)
+        
+        self.save_config_to_file()
+        self.apply_active_map(reload_map=False)
+        self.apply_filter(preserve_view=True)
+
     def on_layer_selection_changed(self) -> None:
         self.update_window_title()
         active_layer_name = self.get_selected_layer_name()
+        
+        selected_items = self.layer_list.selectedItems()
+        has_lines = False
+        if selected_items:
+            item = selected_items[0]
+            idx = item.data(Qt.UserRole)
+            if idx is not None and idx < len(self.layer_entries):
+                entry = self.layer_entries[idx]
+                has_lines = entry.has_lines
+                self.filter_group.setEnabled(has_lines)
+                
+                if has_lines:
+                    # スタックページの切り替え
+                    if entry.name in self.layers:
+                        # 線データの場合
+                        if "osm" in entry.name.lower() or "overpass" in entry.name.lower():
+                            self.filter_stack.setCurrentIndex(1)
+                        else:
+                            self.filter_stack.setCurrentIndex(0)
+                    else:
+                        # 線を含む地図の場合
+                        self.filter_stack.setCurrentIndex(1)
+            else:
+                self.filter_group.setEnabled(False)
+        else:
+            self.filter_group.setEnabled(False)
+
         if active_layer_name and active_layer_name in self.layers_filtered:
             self._refresh_table(self.layers_filtered[active_layer_name])
         else:
@@ -1163,10 +1480,10 @@ class MainWindow(QMainWindow):
             self.table.setColumnCount(0)
 
     def get_selected_layer_name(self) -> Optional[str]:
-        selected = self.layer_tree.selectedItems()
+        selected = self.layer_list.selectedItems()
         if selected:
             item = selected[0]
-            idx = item.data(0, Qt.UserRole)
+            idx = item.data(Qt.UserRole)
             if idx is not None and idx < len(self.layer_entries):
                 entry = self.layer_entries[idx]
                 if entry.name in self.layers:
@@ -1174,15 +1491,15 @@ class MainWindow(QMainWindow):
         return None
 
     def select_tree_layer(self, name: str) -> None:
-        self.layer_tree.blockSignals(True)
+        self.layer_list.blockSignals(True)
         for i, entry in enumerate(self.layer_entries):
             if entry.name in self.layers and entry.name == name:
-                item = self.layer_tree.topLevelItem(i)
+                item = self.layer_list.item(i)
                 if item:
-                    self.layer_tree.setCurrentItem(item)
+                    self.layer_list.setCurrentItem(item)
                     item.setSelected(True)
                 break
-        self.layer_tree.blockSignals(False)
+        self.layer_list.blockSignals(False)
 
 
 def main() -> int:
@@ -1196,6 +1513,11 @@ def main() -> int:
 
     app = QApplication(sys.argv)
     app.setApplicationName(APP_TITLE)
+    icon_path = get_resource_path("icon.ico")
+    if icon_path.exists():
+        icon = QIcon(str(icon_path.resolve()))
+        if not icon.isNull():
+            app.setWindowIcon(icon)
     win = MainWindow()
     if len(sys.argv) > 1:
         path = Path(sys.argv[1])

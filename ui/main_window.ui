@@ -336,23 +336,109 @@
             <item>
              <layout class="QHBoxLayout" name="layer_btn_layout">
               <item>
-               <widget class="QToolButton" name="add_line_btn">
-                <property name="text">
-                 <string>線のデータ追加の方</string>
+               <widget class="QFrame" name="add_line_btn">
+                <property name="sizePolicy">
+                 <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                  <horstretch>0</horstretch>
+                  <verstretch>0</verstretch>
+                 </sizepolicy>
                 </property>
+                <property name="styleSheet">
+                 <string notr="true">QFrame#add_line_btn { border: 1px solid palette(mid); border-radius: 4px; background-color: palette(button); } QFrame#add_line_btn QToolButton { background: transparent; border: none; border-radius: 4px; } QFrame#add_line_btn #left_add_line_btn { border-top-right-radius: 0px; border-bottom-right-radius: 0px; } QFrame#add_line_btn #registered_line_btn { border-top-left-radius: 0px; border-bottom-left-radius: 0px; } QFrame#add_line_btn QToolButton:hover { background-color: palette(midlight); }</string>
+                </property>
+                <property name="frameShape">
+                 <enum>QFrame::Shape::StyledPanel</enum>
+                </property>
+                <property name="frameShadow">
+                 <enum>QFrame::Shadow::Raised</enum>
+                </property>
+                <layout class="QHBoxLayout" name="horizontalLayout_2">
+                 <property name="spacing">
+                  <number>0</number>
+                 </property>
+                 <property name="leftMargin">
+                  <number>0</number>
+                 </property>
+                 <property name="topMargin">
+                  <number>0</number>
+                 </property>
+                 <property name="rightMargin">
+                  <number>0</number>
+                 </property>
+                 <property name="bottomMargin">
+                  <number>0</number>
+                 </property>
+                 <item>
+                  <widget class="QToolButton" name="left_add_line_btn">
+                   <property name="text">
+                    <string>線のデータ追加の方</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QToolButton" name="registered_line_btn">
+                   <property name="text">
+                    <string/>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </widget>
+              </item>
+              <item>
+               <widget class="QFrame" name="add_map_btn">
+                <property name="sizePolicy">
+                 <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                  <horstretch>0</horstretch>
+                  <verstretch>0</verstretch>
+                 </sizepolicy>
+                </property>
+                <property name="styleSheet">
+                 <string notr="true">QFrame#add_map_btn { border: 1px solid palette(mid); border-radius: 4px; background-color: palette(button); } QFrame#add_map_btn QToolButton { background: transparent; border: none; border-radius: 4px; } QFrame#add_map_btn #left_add_map_btn { border-top-right-radius: 0px; border-bottom-right-radius: 0px; } QFrame#add_map_btn #registered_map_btn { border-top-left-radius: 0px; border-bottom-left-radius: 0px; } QFrame#add_map_btn QToolButton:hover { background-color: palette(midlight); }</string>
+                </property>
+                <property name="frameShape">
+                 <enum>QFrame::Shape::StyledPanel</enum>
+                </property>
+                <property name="frameShadow">
+                 <enum>QFrame::Shadow::Raised</enum>
+                </property>
+                <layout class="QHBoxLayout" name="horizontalLayout_3">
+                 <property name="spacing">
+                  <number>0</number>
+                 </property>
+                 <property name="leftMargin">
+                  <number>0</number>
+                 </property>
+                 <property name="topMargin">
+                  <number>0</number>
+                 </property>
+                 <property name="rightMargin">
+                  <number>0</number>
+                 </property>
+                 <property name="bottomMargin">
+                  <number>0</number>
+                 </property>
+                 <item>
+                  <widget class="QToolButton" name="left_add_map_btn">
+                   <property name="text">
+                    <string>背景地図を追加の方</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QToolButton" name="registered_map_btn">
+                   <property name="text">
+                    <string/>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
                </widget>
               </item>
               <item>
                <widget class="QToolButton" name="add_history_btn">
                 <property name="text">
                  <string>履歴</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QToolButton" name="add_map_btn">
-                <property name="text">
-                 <string>背景地図を追加の方</string>
                 </property>
                </widget>
               </item>
@@ -366,15 +452,25 @@
              </layout>
             </item>
             <item>
-             <widget class="QTreeWidget" name="layer_tree">
-              <attribute name="headerVisible">
-               <bool>false</bool>
-              </attribute>
-              <column>
-               <property name="text">
-                <string notr="true">1</string>
-               </property>
-              </column>
+             <widget class="QListWidget" name="layer_list">
+              <property name="minimumSize">
+               <size>
+                <width>0</width>
+                <height>150</height>
+               </size>
+              </property>
+              <property name="dragEnabled">
+               <bool>true</bool>
+              </property>
+              <property name="acceptDrops">
+               <bool>true</bool>
+              </property>
+              <property name="dragDropMode">
+               <enum>QAbstractItemView::DragDropMode::InternalMove</enum>
+              </property>
+              <property name="defaultDropAction">
+               <enum>Qt::DropAction::MoveAction</enum>
+              </property>
              </widget>
             </item>
            </layout>

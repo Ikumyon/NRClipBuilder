@@ -98,6 +98,7 @@
   "map_layer_osm": "OpenStreetMap",
   "map_layer_history": "過去の出力履歴",
   "map_no_attr": "(属性なし)",
+  "map_fetch_osm_btn": "OSM取得",
   "clear_history_btn": "すべての履歴を削除",
   "msg_clear_history_confirm": "本当にすべての履歴を削除しますか？",
   "msg_clear_history_title": "履歴のクリア",
@@ -111,5 +112,11 @@
   "railway_light_rail": "ライトレール",
   "railway_monorail": "モノレール",
   "railway_funicular": "ケーブルカー",
-  "railway_abandoned": "廃線・休止線"
+  "railway_abandoned": "廃線・休止線",
+  "menu_new_map": "新規マップ...",
+  "msg_fetch_osm_title": "OSM線路データ取得",
+  "msg_fetch_osm_no_bbox": "先に地図上で範囲選択してください。",
+  "msg_fetch_osm_loading": "OSM線路データを取得中...",
+  "msg_fetch_osm_success": "OSM線路データを取得しました: {count:,} ways",
+  "dialog_label_has_lines": "線（路線等）も含む"
 }
