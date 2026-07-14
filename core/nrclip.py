@@ -5,9 +5,11 @@ from typing import Any
 
 from core.geo import EARTH_RADIUS, latlon_to_mercator, merc_y_to_lat_rad, inverse_geodesic
 from core.wyhash import wyhash_nrc1_checksum
-from core.geojson import iter_lines_from_geometry
+from core.geojson import coord_key, iter_lines_from_geometry
 
 MODEL_VERSION = 226
+ALIGNMENT_THRESHOLD = 2.5
+BRANCH_OFFSET = 5.0
 
 # --- Hobby Spline Algorithm & Simplification Implementation ---
 
@@ -116,20 +118,17 @@ def hobby_spline(points: list[tuple[float, float]]) -> list[BezierSegment]:
     return segments
 
 def keep_near_junction_endpoints(
+    route: list[int],
     merc_coords: list[tuple[float, float]],
+    junction_nodes: set[int],
     keep: list[bool],
-    orig_coords: list[tuple[float, float]],
-    junction_coords: set[tuple[float, float]],
     junction_spacing: float
 ) -> None:
     if len(merc_coords) <= 2 or junction_spacing <= 0.0:
         return
 
-    start_key = (round(orig_coords[0][0], 7), round(orig_coords[0][1], 7))
-    start_is_junction = start_key in junction_coords
-
-    end_key = (round(orig_coords[-1][0], 7), round(orig_coords[-1][1], 7))
-    end_is_junction = end_key in junction_coords
+    start_is_junction = route[0] in junction_nodes
+    end_is_junction = route[-1] in junction_nodes
 
     spacing_sq = junction_spacing ** 2
 
@@ -149,6 +148,27 @@ def keep_near_junction_endpoints(
             if dx * dx + dy * dy >= spacing_sq:
                 keep[i] = True
                 break
+
+
+def enforce_max_spacing(
+    coords: list[tuple[float, float]],
+    keep: list[bool],
+    max_spacing: float,
+) -> None:
+    if max_spacing <= 0.0:
+        return
+
+    spacing_sq = max_spacing * max_spacing
+    last_kept = 0
+    for i in range(1, len(coords)):
+        if keep[i]:
+            last_kept = i
+            continue
+        dx = coords[i][0] - coords[last_kept][0]
+        dy = coords[i][1] - coords[last_kept][1]
+        if dx * dx + dy * dy >= spacing_sq:
+            keep[i] = True
+            last_kept = i
 
 def spline_simplify(coords: list[tuple[float, float]], keep: list[bool], spline_tolerance: float) -> None:
     for _ in range(20):
@@ -491,6 +511,359 @@ def get_speed_limit(props: dict) -> float:
             pass
     return 0.0
 
+
+def _build_turnout_input(features: list[dict[str, Any]]) -> dict[str, Any]:
+    nodes: dict[int, tuple[float, float]] = {}
+    node_ids: dict[tuple[float, float], int] = {}
+    ways: list[list[int]] = []
+    node_layer: dict[int, int] = {}
+    node_track_type: dict[int, int] = {}
+    node_speed: dict[int, float] = {}
+    next_node_id = 1
+
+    for feat in features:
+        props = feat.get('properties') or {}
+        track_type = get_track_type(props)
+        speed = get_speed_limit(props)
+        try:
+            layer = int(props.get('layer', 0))
+        except (ValueError, TypeError):
+            layer = 0
+
+        for line in iter_lines_from_geometry(feat.get('geometry') or {}):
+            way: list[int] = []
+            for coord in line or []:
+                if not isinstance(coord, (list, tuple)) or len(coord) < 2:
+                    continue
+                lon = float(coord[0])
+                lat = float(coord[1])
+                key = coord_key(lon, lat)
+                node_id = node_ids.get(key)
+                if node_id is None:
+                    node_id = next_node_id
+                    next_node_id += 1
+                    node_ids[key] = node_id
+                    nodes[node_id] = (lon, lat)
+                if not way or way[-1] != node_id:
+                    way.append(node_id)
+
+            if len(way) < 2:
+                continue
+
+            ways.append(way)
+            for node_id in way:
+                existing_layer = node_layer.get(node_id)
+                if existing_layer is None or abs(layer) > abs(existing_layer):
+                    node_layer[node_id] = layer
+                node_track_type.setdefault(node_id, track_type)
+                if speed > 0.0:
+                    node_speed.setdefault(node_id, speed)
+
+    return {
+        'nodes': nodes,
+        'ways': ways,
+        'node_layer': node_layer,
+        'node_track_type': node_track_type,
+        'node_speed': node_speed,
+    }
+
+
+def _find_best_continuation(
+    node_id: int,
+    current_heading: float,
+    ways: list[list[int]],
+    nodes: dict[int, tuple[float, float]],
+    node_ways: dict[int, list[tuple[int, int]]],
+    way_used: list[bool],
+) -> tuple[int, int, float] | None:
+    best: tuple[int, int, float] | None = None
+    for way_index, point_index in node_ways.get(node_id, []):
+        if way_used[way_index]:
+            continue
+        way = ways[way_index]
+        continuation_id = way[1] if point_index == 0 else way[-2]
+        lon, lat = nodes[node_id]
+        next_lon, next_lat = nodes[continuation_id]
+        heading = math.atan2(next_lat - lat, next_lon - lon)
+        difference = abs(heading - current_heading)
+        if difference > math.pi:
+            difference = math.tau - difference
+        if best is None or difference < best[2]:
+            best = (way_index, point_index, difference)
+    return best
+
+
+def _extend_route_forward(
+    route: list[int],
+    ways: list[list[int]],
+    nodes: dict[int, tuple[float, float]],
+    shared_nodes: set[int],
+    node_ways: dict[int, list[tuple[int, int]]],
+    way_used: list[bool],
+) -> None:
+    route_set = set(route)
+    while route[-1] in shared_nodes:
+        last = route[-1]
+        prev_lon, prev_lat = nodes[route[-2]]
+        lon, lat = nodes[last]
+        heading = math.atan2(lat - prev_lat, lon - prev_lon)
+        best = _find_best_continuation(last, heading, ways, nodes, node_ways, way_used)
+        if best is None or best[2] > ALIGNMENT_THRESHOLD:
+            break
+        way_index, point_index, _ = best
+        way = ways[way_index]
+        new_nodes = way[1:] if point_index == 0 else list(reversed(way[:-1]))
+        if any(node_id in route_set for node_id in new_nodes):
+            break
+        way_used[way_index] = True
+        route_set.update(new_nodes)
+        route.extend(new_nodes)
+
+
+def _extend_route_backward(
+    route: list[int],
+    ways: list[list[int]],
+    nodes: dict[int, tuple[float, float]],
+    shared_nodes: set[int],
+    node_ways: dict[int, list[tuple[int, int]]],
+    way_used: list[bool],
+) -> None:
+    route_set = set(route)
+    while route[0] in shared_nodes:
+        first = route[0]
+        next_lon, next_lat = nodes[route[1]]
+        lon, lat = nodes[first]
+        heading = math.atan2(lat - next_lat, lon - next_lon)
+        best = _find_best_continuation(first, heading, ways, nodes, node_ways, way_used)
+        if best is None or best[2] > ALIGNMENT_THRESHOLD:
+            break
+        way_index, point_index, _ = best
+        way = ways[way_index]
+        new_nodes = way[:-1] if point_index == len(way) - 1 else list(reversed(way[1:]))
+        if any(node_id in route_set for node_id in new_nodes):
+            break
+        way_used[way_index] = True
+        route_set.update(new_nodes)
+        route[:] = new_nodes + route
+
+
+def _merge_ways_into_routes(osm: dict[str, Any]) -> dict[str, Any]:
+    ways: list[list[int]] = osm['ways']
+    nodes: dict[int, tuple[float, float]] = osm['nodes']
+    node_ways: dict[int, list[tuple[int, int]]] = {}
+    for way_index, way in enumerate(ways):
+        for point_index, node_id in enumerate(way):
+            node_ways.setdefault(node_id, []).append((way_index, point_index))
+
+    shared_nodes: set[int] = set()
+    junction_nodes: set[int] = set()
+    for node_id, refs in node_ways.items():
+        way_count = len({way_index for way_index, _ in refs})
+        if way_count >= 2:
+            shared_nodes.add(node_id)
+        if way_count >= 3 or (
+            way_count == 2
+            and any(0 < point_index < len(ways[way_index]) - 1 for way_index, point_index in refs)
+        ):
+            junction_nodes.add(node_id)
+
+    way_used = [False] * len(ways)
+    routes: list[list[int]] = []
+    for start_index in sorted(range(len(ways)), key=lambda index: len(ways[index]), reverse=True):
+        if way_used[start_index]:
+            continue
+        way_used[start_index] = True
+        route = list(ways[start_index])
+        _extend_route_forward(route, ways, nodes, shared_nodes, node_ways, way_used)
+        _extend_route_backward(route, ways, nodes, shared_nodes, node_ways, way_used)
+        routes.append(route)
+
+    routes.sort(key=len, reverse=True)
+    route_coords = [
+        [latlon_to_mercator(nodes[node_id][1], nodes[node_id][0]) for node_id in route]
+        for route in routes
+    ]
+    junction_owner: dict[int, int] = {}
+    for route_index, route in enumerate(routes):
+        for node_id in route:
+            if node_id in junction_nodes:
+                junction_owner.setdefault(node_id, route_index)
+
+    return {
+        'routes': routes,
+        'route_coords': route_coords,
+        'junction_nodes': junction_nodes,
+        'junction_owner': junction_owner,
+    }
+
+
+def _simplify_turnout_routes(
+    route_data: dict[str, Any],
+    node_layer: dict[int, int],
+    spline_tolerance: float,
+    junction_spacing: float,
+    max_spacing: float,
+    straight_tolerance: float,
+) -> list[list[tuple[int | None, float, float]]]:
+    simplified_routes: list[list[tuple[int | None, float, float]]] = []
+    junction_nodes: set[int] = route_data['junction_nodes']
+
+    for route, coords in zip(route_data['routes'], route_data['route_coords']):
+        keep = [False] * len(coords)
+        keep[0] = True
+        keep[-1] = True
+
+        for i, node_id in enumerate(route):
+            if node_id in junction_nodes:
+                keep[i] = True
+            if i > 0 and node_layer.get(route[i - 1], 0) != node_layer.get(node_id, 0):
+                keep[i - 1] = True
+                keep[i] = True
+
+        keep_near_junction_endpoints(route, coords, junction_nodes, keep, junction_spacing)
+        enforce_max_spacing(coords, keep, max_spacing)
+        spline_simplify(coords, keep, spline_tolerance)
+
+        kept_indices = [i for i, should_keep in enumerate(keep) if should_keep]
+        result: list[tuple[int | None, float, float]] = []
+        for kept_position, start_index in enumerate(kept_indices):
+            start_x, start_y = coords[start_index]
+            result.append((start_index, start_x, start_y))
+            if kept_position + 1 >= len(kept_indices):
+                continue
+            end_index = kept_indices[kept_position + 1]
+            end_x, end_y = coords[end_index]
+            segment_distance = math.hypot(end_x - start_x, end_y - start_y)
+            if segment_distance <= max_spacing or max_spacing <= 0.0:
+                continue
+            if is_nearly_straight(coords, start_index, end_index, straight_tolerance):
+                continue
+            for x, y in interpolate_along_polyline(coords, start_index, end_index, max_spacing):
+                result.append((None, x, y))
+        simplified_routes.append(result)
+
+    return simplified_routes
+
+
+def _make_track_node(
+    node_id: int,
+    x: float,
+    y: float,
+    layer: int,
+    track_type: int,
+    speed: float,
+) -> dict[str, Any]:
+    return {
+        'node_id': node_id, 'node_type': 1, 'track_type': track_type,
+        'layer': layer, 'winding': 1, 'prev_node': 0, 'next_node': 0, 'group_id': 0,
+        'user_max_speed': speed, 'x': x, 'y': y,
+        'user_tangent_delta': 0.0, 'next_spline_t': 0.5, 'station_group_id': 0,
+        'blueprint': 0, 'name': '', 'station_platform_auto_name': 0, 'straight': 0,
+        'tangential': 1, 'limited_shapes': 0, 'attached_to_id': 0, 'attached_to_t': 0.0,
+        'attached_to_direction': 0, 'attached_by': [],
+    }
+
+
+def _build_track_nodes(
+    simplified: list[list[tuple[int | None, float, float]]],
+    route_data: dict[str, Any],
+    osm: dict[str, Any],
+) -> list[dict[str, Any]]:
+    track_nodes: list[dict[str, Any]] = []
+    next_node_id = 1
+    for route_index, route in enumerate(simplified):
+        line_nodes: list[dict[str, Any]] = []
+        last_layer = 0
+        last_track_type = 3
+        last_speed = 0.0
+        for original_index, x, y in route:
+            if original_index is not None:
+                osm_node_id = route_data['routes'][route_index][original_index]
+                last_layer = osm['node_layer'].get(osm_node_id, 0)
+                last_track_type = osm['node_track_type'].get(osm_node_id, 3)
+                last_speed = osm['node_speed'].get(osm_node_id, 0.0)
+            node = _make_track_node(
+                next_node_id, x, y, last_layer, last_track_type, last_speed,
+            )
+            next_node_id += 1
+            if line_nodes:
+                node['prev_node'] = line_nodes[-1]['node_id']
+                line_nodes[-1]['next_node'] = node['node_id']
+            line_nodes.append(node)
+            track_nodes.append(node)
+    return track_nodes
+
+
+def _attach_turnout_branches(
+    track_nodes: list[dict[str, Any]],
+    simplified: list[list[tuple[int | None, float, float]]],
+    route_data: dict[str, Any],
+) -> None:
+    route_game_nodes: list[list[int]] = []
+    junction_game_ids: dict[int, int] = {}
+    track_index = 0
+    for route_index, route in enumerate(simplified):
+        chain: list[int] = []
+        for original_index, _, _ in route:
+            game_id = track_nodes[track_index]['node_id']
+            track_index += 1
+            chain.append(game_id)
+            if original_index is None:
+                continue
+            osm_node_id = route_data['routes'][route_index][original_index]
+            if (
+                osm_node_id in route_data['junction_nodes']
+                and route_data['junction_owner'].get(osm_node_id) == route_index
+            ):
+                junction_game_ids[osm_node_id] = game_id
+        route_game_nodes.append(chain)
+
+    node_map = {node['node_id']: node for node in track_nodes}
+    for route_index, route in enumerate(simplified):
+        if len(route) < 2:
+            continue
+        for is_start in (True, False):
+            endpoint_index = 0 if is_start else -1
+            original_index = route[endpoint_index][0]
+            if original_index is None:
+                continue
+            osm_node_id = route_data['routes'][route_index][original_index]
+            if osm_node_id not in route_data['junction_nodes']:
+                continue
+            if route_data['junction_owner'].get(osm_node_id) == route_index:
+                continue
+            parent_id = junction_game_ids.get(osm_node_id)
+            if parent_id is None:
+                continue
+
+            chain = route_game_nodes[route_index]
+            branch_id = chain[0] if is_start else chain[-1]
+            neighbor_id = chain[1] if is_start else chain[-2]
+            branch = node_map[branch_id]
+            branch_neighbor = node_map[neighbor_id]
+            parent = node_map[parent_id]
+            parent_neighbor_id = parent['next_node'] or parent['prev_node']
+            if not parent_neighbor_id:
+                continue
+            parent_neighbor = node_map[parent_neighbor_id]
+
+            parent_dx = parent_neighbor['x'] - parent['x']
+            parent_dy = parent_neighbor['y'] - parent['y']
+            branch_dx = branch_neighbor['x'] - branch['x']
+            branch_dy = branch_neighbor['y'] - branch['y']
+            direction = 1 if branch_dx * parent_dx + branch_dy * parent_dy >= 0.0 else -1
+
+            branch_length = max(math.hypot(branch_dx, branch_dy), 1e-10)
+            mercator_offset = BRANCH_OFFSET / math.cos(merc_y_to_lat_rad(branch['y']))
+            branch['x'] += branch_dx / branch_length * mercator_offset
+            branch['y'] += branch_dy / branch_length * mercator_offset
+            branch['attached_to_id'] = parent_id
+            branch['attached_to_t'] = 0.5
+            branch['attached_to_direction'] = direction
+            branch['tangential'] = 0
+            parent['attached_by'].append(branch_id)
+
+
 def geojson_to_nrclip_bytes(
     features: list[dict[str, Any]],
     name: str,
@@ -501,149 +874,24 @@ def geojson_to_nrclip_bytes(
     max_spacing: float = 200.0,
     straight_tolerance: float = 0.5
 ) -> bytes:
-    """Convert geojson features to NIMBY Rails .nrclip bytes with Hobby Spline simplification and conditional subdivision."""
-    # 1. 路線データを routes リストとして集約
-    routes = []
-    for feat in features:
-        props = feat.get('properties') or {}
-        track_type = get_track_type(props)
-        speed = get_speed_limit(props)
-        layer = 0
-        try:
-            layer = int(props.get('layer', 0))
-        except (ValueError, TypeError):
-            pass
-        
-        for line in iter_lines_from_geometry(feat.get('geometry') or {}):
-            valid_line = []
-            for c in line:
-                if not isinstance(c, (list, tuple)) or len(c) < 2:
-                    continue
-                valid_line.append((float(c[0]), float(c[1])))  # (lon, lat)
-            if len(valid_line) >= 2:
-                routes.append({
-                    'coords': valid_line,
-                    'track_type': track_type,
-                    'speed': speed,
-                    'layer': layer
-                })
-
-    if not routes:
+    """Convert GeoJSON features to .nrclip using Turnout route topology."""
+    osm = _build_turnout_input(features)
+    if not osm['ways']:
         raise ValueError("トラックノードが作成されませんでした。")
-
-    # 2. ジャンクション（共有ノード）の検出
-    coord_counts = {}
-    for ri, r in enumerate(routes):
-        for pi, pt in enumerate(r['coords']):
-            key = (round(pt[0], 7), round(pt[1], 7))
-            if key not in coord_counts:
-                coord_counts[key] = []
-            coord_counts[key].append((ri, pi))
-            
-    junction_coords = set()
-    for key, refs in coord_counts.items():
-        unique_routes = set(ri for ri, pi in refs)
-        if len(unique_routes) >= 2 or len(refs) >= 2:
-            junction_coords.add(key)
-
-    # 3. 各 route の簡素化 (spline_simplify) & 細分化 (subdivide)
-    for r in routes:
-        coords = r['coords']
-        # メルカトル座標の計算
-        merc_coords = []
-        for lon, lat in coords:
-            mx, my = latlon_to_mercator(lat, lon)
-            merc_coords.append((mx, my))
-            
-        keep = [False] * len(coords)
-        keep[0] = True
-        keep[-1] = True
-        
-        for i, pt in enumerate(coords):
-            key = (round(pt[0], 7), round(pt[1], 7))
-            if key in junction_coords:
-                keep[i] = True
-                
-        keep_near_junction_endpoints(merc_coords, keep, coords, junction_coords, junction_spacing)
-        spline_simplify(merc_coords, keep, spline_tolerance)
-        
-        # 簡素化および細分化の適用
-        kept_indices = [i for i, k in enumerate(keep) if k]
-        final_coords = []
-        for idx in range(len(kept_indices)):
-            i0 = kept_indices[idx]
-            final_coords.append(coords[i0])
-            if idx + 1 >= len(kept_indices):
-                continue
-            i1 = kept_indices[idx + 1]
-            
-            # 二点間のメルカトル距離を確認
-            x0, y0 = merc_coords[i0]
-            x1, y1 = merc_coords[i1]
-            seg_dist = math.hypot(x1 - x0, y1 - y0)
-            
-            if seg_dist > max_spacing and max_spacing > 0.0:
-                # ほぼ直線（＝同じ向きが連続）であれば細分化をスキップ
-                if is_nearly_straight(merc_coords, i0, i1, straight_tolerance):
-                    continue
-                
-                # 直線ではない場合のみ細分化（折れ線に沿って等間隔に補間）
-                interp_merc = interpolate_along_polyline(merc_coords, i0, i1, max_spacing)
-                for mx, my in interp_merc:
-                    mlon, mlat = mercator_to_latlon(mx, my)
-                    final_coords.append((mlon, mlat))
-                    
-        r['simplified_coords'] = final_coords
-
-    # 4. トラックノードの構築
-    track_nodes = []
-    next_node_id = 1
-    
-    for r in routes:
-        line_nodes = []
-        for lon, lat in r['simplified_coords']:
-            x, y = latlon_to_mercator(lat, lon)
-            node = {
-                'node_id': next_node_id, 'node_type': 1, 'track_type': r['track_type'],
-                'layer': r['layer'], 'winding': 1, 'prev_node': 0, 'next_node': 0, 'group_id': 0,
-                'user_max_speed': r['speed'], 'x': x, 'y': y, 'raw_lon': lon, 'raw_lat': lat,
-                'user_tangent_delta': 0.0, 'next_spline_t': 0.5, 'station_group_id': 0,
-                'blueprint': 0, 'name': '', 'station_platform_auto_name': 0, 'straight': 0,
-                'tangential': 1, 'limited_shapes': 0, 'attached_to_id': 0, 'attached_to_t': 0.0,
-                'attached_to_direction': 0, 'attached_by': [],
-            }
-            line_nodes.append(node)
-            track_nodes.append(node)
-            next_node_id += 1
-            
-        for i in range(len(line_nodes)):
-            if i > 0: line_nodes[i]['prev_node'] = line_nodes[i - 1]['node_id']
-            if i < len(line_nodes) - 1: line_nodes[i]['next_node'] = line_nodes[i + 1]['node_id']
-
+    route_data = _merge_ways_into_routes(osm)
+    simplified = _simplify_turnout_routes(
+        route_data,
+        osm['node_layer'],
+        spline_tolerance,
+        junction_spacing,
+        max_spacing,
+        straight_tolerance,
+    )
+    track_nodes = _build_track_nodes(simplified, route_data, osm)
     if not track_nodes:
         raise ValueError("トラックノードが作成されませんでした。")
+    _attach_turnout_branches(track_nodes, simplified, route_data)
 
-    # 5. 合流・接続処理
-    coord_to_gids = {}
-    for node in track_nodes:
-        key = (round(node['raw_lon'], 7), round(node['raw_lat'], 7))
-        if key not in coord_to_gids:
-            coord_to_gids[key] = []
-        coord_to_gids[key].append(node['node_id'])
-        
-    node_map = {n['node_id']: n for n in track_nodes}
-    for key, gids in coord_to_gids.items():
-        if len(gids) > 1:
-            parent_id = gids[0]
-            parent_node = node_map[parent_id]
-            for child_id in gids[1:]:
-                child_node = node_map[child_id]
-                child_node['attached_to_id'] = parent_id
-                child_node['attached_to_t'] = 0.5
-                child_node['attached_to_direction'] = 1
-                parent_node['attached_by'].append(child_id)
-
-    # 6. 中心点を基準としたメートル平面座標系 (x, y) への変換
     cx = sum(t['x'] for t in track_nodes) / len(track_nodes)
     cy = sum(t['y'] for t in track_nodes) / len(track_nodes)
     center_lat = merc_y_to_lat_rad(cy)

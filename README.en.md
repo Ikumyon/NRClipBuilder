@@ -9,12 +9,20 @@ It allows you to filter railway line data drawn on the map by keywords or attrib
   - National Land Numerical Information (Japanese N05, etc.) ZIP files
   - Shapefile (`.shp`)
   - GeoJSON (`.geojson` / `.json`)
+  - **OpenStreetMap (OSM) Automated Import**: Automatically download and import railway line data within the selected Bounding Box (BBox) using the Overpass API.
+- **Multi-Layer Management**:
+  - Individually manage multiple imported GIS datasets in a layer tree.
+  - Supports changing overlay order via drag-and-drop, toggling visibility (show/hide), and deleting individual layers.
 - **Advanced Filtering**:
   - OR/AND condition extraction based on attribute names, keywords, and exclusion keywords.
+  - Quick filtering via checkboxes for specific railway categories such as ordinary railway (Rail), Subway, Tram, Monorail, and Abandoned lines.
   - Option to display/export only line data (LineString, etc.).
 - **Interactive Map Preview**:
   - Interactive map preview using QWebEngineView and Leaflet.js.
   - Background switching between GSI Map (Standard/Aerial) and OpenStreetMap (OSM).
+- **BBox Selection and History**:
+  - Click and drag on the map to select a Bounding Box (BBox) and clip coordinates.
+  - Save frequently used BBox coordinates in a history list for quick reuse.
 - **Multiple Export Formats**:
   - GeoJSON
   - Overpass-style JSON for Turnout
