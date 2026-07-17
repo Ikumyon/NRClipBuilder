@@ -34,6 +34,10 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMenu,
     QToolButton,
+    QInputDialog,
+    QComboBox,
+    QWidget,
+    QButtonGroup,
 )
 
 from core.geojson import geojson_to_overpass
@@ -49,7 +53,7 @@ from core.geo_filter import (
 )
 from core.widgets import UiLoader, MapWidget, HAS_WEBENGINE
 from core.utils import get_resource_path, get_executable_dir, get_svg_icon
-from core.dialogs import AddMapDialog
+from core.dialogs import AddMapDialog, AddLineLayerDialog
 from core.config import AppConfig, HistoryManager
 
 APP_TITLE = "NRClipBuilder"
@@ -64,9 +68,11 @@ DEFAULT_TRANSLATION: dict[str, str] = {
     "left_tab_filter": "Filter",
     "left_tab_export": "Export",
     "draw_line_btn": "Draw Line",
-    "drawn_layer_name": "Drawn Lines",
     "msg_draw_line_ready": "Click to add straight-line vertices. Double-click to set the end point.",
-    "msg_draw_line_added": "Added drawn line: {count} points",
+    "msg_draw_line_added": "Added line: {count} points",
+    "structure_ground": "Ground",
+    "structure_bridge": "Viaduct / Bridge",
+    "structure_tunnel": "Tunnel",
 }
 
 
@@ -178,6 +184,8 @@ class MainWindow(QMainWindow):
 
         self.add_history_btn.clicked.connect(self.on_add_history_clicked)
         self.remove_layer_btn.clicked.connect(self.on_remove_layer_clicked)
+        self.edit_layer_btn.clicked.connect(self.on_edit_layer_clicked)
+        self.draw_line_btn.setCheckable(True)
         self.draw_line_btn.clicked.connect(self.on_draw_line_clicked)
         self.draw_line_btn.setEnabled(HAS_WEBENGINE)
         
@@ -232,6 +240,26 @@ class MainWindow(QMainWindow):
         self.action_export_nrclip.triggered.connect(self.export_nrclip)
         self.action_open_html.triggered.connect(self.open_preview_in_browser)
         self.action_quit.triggered.connect(self.close)
+
+        # 描画構造トグルボタンとアクションの設定
+        self.draw_struct_tunnel_btn.clicked.connect(lambda: self.on_draw_structure_changed("tunnel"))
+        self.draw_struct_ground_btn.clicked.connect(lambda: self.on_draw_structure_changed("ground"))
+        self.draw_struct_bridge_btn.clicked.connect(lambda: self.on_draw_structure_changed("bridge"))
+        
+        self.draw_struct_tunnel_btn.setEnabled(False)
+        self.draw_struct_ground_btn.setEnabled(False)
+        self.draw_struct_bridge_btn.setEnabled(False)
+
+        self.addAction(self.action_next_struct)
+        self.addAction(self.action_prev_struct)
+        self.action_next_struct.triggered.connect(self.select_next_structure)
+        self.action_prev_struct.triggered.connect(self.select_prev_structure)
+
+        self.struct_buttons = [
+            self.draw_struct_tunnel_btn,
+            self.draw_struct_ground_btn,
+            self.draw_struct_bridge_btn
+        ]
 
         # 初期ローカライズの適用
         self.retranslate_ui()
@@ -368,6 +396,9 @@ class MainWindow(QMainWindow):
         self.left_add_map_btn.setText(self.tr_msg("add_map_btn"))
         self.remove_layer_btn.setText(self.tr_msg("remove_layer_btn"))
         self.draw_line_btn.setText(self.tr_msg("draw_line_btn"))
+        self.draw_struct_tunnel_btn.setText(self.tr_msg("structure_tunnel"))
+        self.draw_struct_ground_btn.setText(self.tr_msg("structure_ground"))
+        self.draw_struct_bridge_btn.setText(self.tr_msg("structure_bridge"))
         self.layer_group.setTitle(self.tr_msg("layer_group"))
         self.left_tabs.setTabText(0, self.tr_msg("left_tab_filter"))
         self.left_tabs.setTabText(1, self.tr_msg("left_tab_layers"))
@@ -430,17 +461,7 @@ class MainWindow(QMainWindow):
         self.add_history_btn.setIconSize(icon_size)
         self.remove_layer_btn.setIconSize(icon_size)
 
-    def drawn_layer_name(self) -> str:
-        return self.tr_msg("drawn_layer_name")
 
-    def ensure_drawn_layer(self) -> FeatureStore:
-        layer_name = self.drawn_layer_name()
-        store = self.layers.get(layer_name)
-        if store is None:
-            store = FeatureStore(fields=["name", "railway", "_source"])
-            self.layers[layer_name] = store
-        self.active_layers.add(layer_name)
-        return store
 
     def set_draw_buttons_active(self, active: bool) -> None:
         self.draw_line_btn.blockSignals(True)
@@ -452,12 +473,115 @@ class MainWindow(QMainWindow):
         if HAS_WEBENGINE:
             js_value = "true" if checked else "false"
             self.map_widget.web.page().runJavaScript(f"window.setDrawLineMode({js_value});")
+        
+        self.draw_struct_tunnel_btn.setEnabled(checked)
+        self.draw_struct_ground_btn.setEnabled(checked)
+        self.draw_struct_bridge_btn.setEnabled(checked)
+        
+        if checked:
+            struct = "ground"
+            if self.draw_struct_tunnel_btn.isChecked():
+                struct = "tunnel"
+            elif self.draw_struct_bridge_btn.isChecked():
+                struct = "bridge"
+            self.on_draw_structure_changed(struct)
+
+    def on_draw_structure_changed(self, struct: str) -> None:
+        if HAS_WEBENGINE:
+            self.map_widget.web.page().runJavaScript(f"window.setDrawStructure('{struct}');")
+
+    def select_next_structure(self) -> None:
+        if not self.draw_line_btn.isChecked():
+            return
+        current_idx = 1
+        for i, btn in enumerate(self.struct_buttons):
+            if btn.isChecked():
+                current_idx = i
+                break
+        next_idx = (current_idx + 1) % len(self.struct_buttons)
+        self.struct_buttons[next_idx].click()
+
+    def select_prev_structure(self) -> None:
+        if not self.draw_line_btn.isChecked():
+            return
+        current_idx = 1
+        for i, btn in enumerate(self.struct_buttons):
+            if btn.isChecked():
+                current_idx = i
+                break
+        prev_idx = (current_idx - 1) % len(self.struct_buttons)
+        self.struct_buttons[prev_idx].click()
 
     def on_draw_line_clicked(self) -> None:
-        pass
+        self.apply_draw_line_mode()
+        if self.draw_line_btn.isChecked():
+            self.log_msg(self.tr_msg("msg_draw_line_ready"))
 
-    def add_drawn_line(self, coordinates: list[list[float]]) -> None:
-        pass
+    def add_drawn_line(self, segments: list[dict[str, Any]]) -> None:
+        if not segments:
+            return
+            
+        target_layer_name = self.get_selected_layer_name()
+        if not target_layer_name or target_layer_name not in self.layers:
+            QMessageBox.warning(
+                self,
+                self.tr_msg("msg_validation_error") or "警告",
+                "描画した線を追加する宛先の線レイヤーをツリーで選択してください。\nまたは「線を追加」ボタンから空の新規レイヤーを作成してください。"
+            )
+            return
+            
+        store = self.layers[target_layer_name]
+        
+        # 線の名前を入力するダイアログを表示
+        default_name = f"Line {len(store.features) + 1}"
+        title = self.tr_msg("dialog_drawn_line_title") or "線の追加"
+        prompt = self.tr_msg("dialog_drawn_line_prompt") or "線の名前を入力してください:"
+        
+        name, ok = QInputDialog.getText(
+            self,
+            title,
+            prompt,
+            text=default_name
+        )
+        if not ok or not name.strip():
+            return # キャンセルまたは名前が空なら何もしない
+            
+        # 各セグメントを個別の Feature として登録
+        for seg in segments:
+            coords = seg.get("coords")
+            struct = seg.get("structure")
+            if not coords or len(coords) < 2:
+                continue
+                
+            properties = {
+                "name": name.strip(),
+                "railway": "rail",
+                "_source": target_layer_name
+            }
+            
+            if struct == "bridge":
+                properties["bridge"] = "yes"
+            elif struct == "tunnel":
+                properties["tunnel"] = "yes"
+                
+            if seg.get("distance") is not None:
+                properties["distance"] = f"{seg['distance']:.1f} m"
+            feature = {
+                "type": "Feature",
+                "geometry": {
+                    "type": "LineString",
+                    "coordinates": coords
+                },
+                "properties": properties
+            }
+            store.features.append(feature)
+        
+        self.update_layer_tree()
+        self.select_tree_layer(target_layer_name)
+        self.apply_filter()
+        self.save_config_to_file()
+        
+        self.log_msg(self.tr_msg("msg_draw_line_added").format(count=len(segments) + 1))
 
     def update_window_title(self) -> None:
         active_layer_name = self.get_selected_layer_name()
@@ -529,13 +653,13 @@ class MainWindow(QMainWindow):
 
             self.update_layer_tree()
             self.select_tree_layer(layer_name)
-            self.apply_filter(preserve_view=False)
+            self.apply_filter()
         except Exception as exc:
             QApplication.restoreOverrideCursor()
             self.log_msg(self.tr_msg("dialog_error") + str(exc))
             QMessageBox.critical(self, self.tr_msg("msg_load_error_title"), f"{exc}\n\n{traceback.format_exc()}")
 
-    def apply_filter(self, *args: Any, preserve_view: bool = True) -> None:
+    def apply_filter(self, *args: Any) -> None:
         try:
             total_count = 0
             for name, store in self.layers.items():
@@ -563,7 +687,7 @@ class MainWindow(QMainWindow):
                     features = self.layers_filtered[entry.name]
                     map_features.extend(features)
                     filtered_count += len(features)
-            self._refresh_map(map_features, preserve_view=preserve_view)
+            self._refresh_map(map_features, preserve_view=True)
 
             self.log_msg(self.tr_msg("msg_filtered_count").format(filtered=filtered_count, total=total_count))
 
@@ -833,6 +957,22 @@ class MainWindow(QMainWindow):
                     self.select_history_row_by_name(name)
                 except ValueError:
                     pass
+        elif title.startswith("DRAWN_LINE:"):
+            coords_str = title[11:]
+            try:
+                coordinates = json.loads(coords_str)
+                self.add_drawn_line(coordinates)
+            except Exception as e:
+                self.log_msg(f"Error parsing drawn line: {e}")
+            self.set_draw_buttons_active(False)
+            self.apply_draw_line_mode()
+        elif title == "DRAW_LINE_END":
+            self.set_draw_buttons_active(False)
+            self.apply_draw_line_mode()
+        elif title == "DRAW_LINE_CANCEL":
+            self.set_draw_buttons_active(False)
+            self.apply_draw_line_mode()
+            self.log_msg("描画をキャンセルしました")
 
     def select_history_row_by_name(self, name: str) -> None:
         for r in range(self.history_table.rowCount()):
@@ -881,13 +1021,6 @@ class MainWindow(QMainWindow):
                         "name": entry.name,
                         "path": str(store.source_path.resolve()),
                         "checked": entry.checked
-                    })
-                else:
-                    layers_data.append({
-                        "type": "drawn",
-                        "name": entry.name,
-                        "checked": entry.checked,
-                        "geojson": store.feature_collection(),
                     })
             else:
                 layers_data.append({
@@ -973,19 +1106,7 @@ class MainWindow(QMainWindow):
                         self.active_maps.add(name)
                 elif l_type == "history":
                     self.show_history_bounds = checked
-                elif l_type == "drawn":
-                    geojson = layer.get("geojson")
-                    raw_features = geojson.get("features", []) if isinstance(geojson, dict) else []
-                    if isinstance(name, str) and isinstance(raw_features, list):
-                        features = [feature for feature in raw_features if isinstance(feature, dict)]
-                        for feature in features:
-                            feature.setdefault("properties", {})["_source"] = name
-                        self.layers[name] = FeatureStore(
-                            features=features,
-                            fields=collect_fields(features),
-                        )
-                        if checked:
-                            self.active_layers.add(name)
+
 
             # 線データを自動ロード（save_config=Falseで保存ループを防ぐ）
             for layer in layers_data:
@@ -1309,13 +1430,13 @@ class MainWindow(QMainWindow):
             spline_tolerance = self.spline_tolerance_spin.value()
             junction_spacing = self.junction_spacing_spin.value()
             max_spacing = self.max_spacing_spin.value()
-            straight_tolerance = self.straight_tolerance_spin.value()
+            tangent_mode = (self.track_mode_combo.currentData() == "tangent")
             data = geojson_to_nrclip_bytes(
                 line_features, name, scale_x, scale_y,
                 spline_tolerance=spline_tolerance,
                 junction_spacing=junction_spacing,
                 max_spacing=max_spacing,
-                straight_tolerance=straight_tolerance
+                tangent_mode=tangent_mode
             )
             path.write_bytes(data)
             self.last_output_dir = path.parent
@@ -1343,14 +1464,49 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     def on_add_line_clicked(self) -> None:
-        path_str, _ = QFileDialog.getOpenFileName(
-            self,
-            self.tr_msg("dialog_open_file_title"),
-            str(self.last_output_dir) if hasattr(self, "last_output_dir") else "",
-            "GIS data (*.zip *.shp *.geojson *.json);;ZIP (*.zip);;Shapefile (*.shp);;GeoJSON (*.geojson *.json);;All files (*.*)"
-        )
+        idx = 1
+        while f"New Layer {idx}" in self.layers:
+            idx += 1
+        default_name = f"New Layer {idx}"
+        
+        dialog = AddLineLayerDialog(self, self.translation, default_name=default_name)
+        if dialog.exec() != QDialog.Accepted:
+            return
+            
+        name, path_str = dialog.get_data()
+        if name in self.layers:
+            QMessageBox.warning(self, self.tr_msg("msg_validation_error") or "警告", "同名のレイヤーがすでに存在します。")
+            return
+            
         if path_str:
-            self.load_path(Path(path_str))
+            path = Path(path_str)
+            if path.exists():
+                self.load_path(path)
+                if path.name in self.layers:
+                    store = self.layers.pop(path.name)
+                    for f in store.features:
+                        if "properties" in f:
+                            f["properties"]["_source"] = name
+                    self.layers[name] = store
+                    self.active_layers.discard(path.name)
+                    self.active_layers.add(name)
+                    
+                    self.update_layer_tree()
+                    self.select_tree_layer(name)
+                    self.apply_filter()
+                    self.save_config_to_file()
+        else:
+            self.create_new_empty_layer(name)
+
+    def create_new_empty_layer(self, name: str) -> None:
+        store = FeatureStore(fields=["name", "railway", "_source"])
+        self.layers[name] = store
+        self.active_layers.add(name)
+        
+        self.update_layer_tree()
+        self.select_tree_layer(name)
+        self.apply_filter()
+        self.save_config_to_file()
 
     def on_add_history_clicked(self) -> None:
         # 既にツリーにあれば何もしない
@@ -1377,6 +1533,36 @@ class MainWindow(QMainWindow):
         self.layer_entries.pop(idx)
         self.update_layer_tree()
         self.log_msg(f"削除しました: {entry.name}")
+
+    def on_edit_layer_clicked(self) -> None:
+        selected = self.layer_list.selectedItems()
+        if not selected:
+            return
+        idx = selected[0].data(Qt.UserRole)
+        if idx is None or idx >= len(self.layer_entries):
+            return
+        entry = self.layer_entries[idx]
+        if entry.name not in self.layers:
+            self.log_msg("このレイヤーは編集できません")
+            return
+        name, ok = QInputDialog.getText(self, "レイヤー編集", "レイヤー名:", text=entry.name)
+        name = name.strip()
+        if not ok or not name or name == entry.name:
+            return
+        if name in self.layers:
+            QMessageBox.warning(self, self.tr_msg("msg_validation_error") or "警告", "同名のレイヤーがすでに存在します。")
+            return
+        store = self.layers.pop(entry.name)
+        for feature in store.features:
+            feature.setdefault("properties", {})["_source"] = name
+        self.layers[name] = store
+        if entry.name in self.active_layers:
+            self.active_layers.remove(entry.name)
+            self.active_layers.add(name)
+        self.update_layer_tree()
+        self.select_tree_layer(name)
+        self.apply_filter()
+        self.save_config_to_file()
 
     def _rebuild_layer_entries(self) -> None:
         """現在の状態から layer_entries を再構築する。"""
@@ -1539,7 +1725,7 @@ class MainWindow(QMainWindow):
         
         self.save_config_to_file()
         self.apply_active_map(reload_map=False)
-        self.apply_filter(preserve_view=True)
+        self.apply_filter()
 
     def on_layer_selection_changed(self) -> None:
         self.update_window_title()

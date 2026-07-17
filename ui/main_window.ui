@@ -490,6 +490,52 @@
                </widget>
               </item>
               <item>
+               <layout class="QHBoxLayout" name="draw_struct_layout">
+                <item>
+                 <widget class="QToolButton" name="draw_struct_tunnel_btn">
+                  <property name="text">
+                   <string>トンネル</string>
+                  </property>
+                  <property name="checkable">
+                   <bool>true</bool>
+                  </property>
+                  <attribute name="buttonGroup">
+                   <string notr="true">draw_struct_group</string>
+                  </attribute>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QToolButton" name="draw_struct_ground_btn">
+                  <property name="text">
+                   <string>地上</string>
+                  </property>
+                  <property name="checkable">
+                   <bool>true</bool>
+                  </property>
+                  <property name="checked">
+                   <bool>true</bool>
+                  </property>
+                  <attribute name="buttonGroup">
+                   <string notr="true">draw_struct_group</string>
+                  </attribute>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QToolButton" name="draw_struct_bridge_btn">
+                  <property name="text">
+                   <string>高架</string>
+                  </property>
+                  <property name="checkable">
+                   <bool>true</bool>
+                  </property>
+                  <attribute name="buttonGroup">
+                   <string notr="true">draw_struct_group</string>
+                  </attribute>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+              <item>
                <widget class="QToolButton" name="add_history_btn">
                 <property name="text">
                  <string>履歴</string>
@@ -500,6 +546,13 @@
                <widget class="QToolButton" name="remove_layer_btn">
                 <property name="text">
                  <string>削除</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QToolButton" name="edit_layer_btn">
+                <property name="text">
+                 <string>レイヤー編集</string>
                 </property>
                </widget>
               </item>
@@ -938,7 +991,26 @@
     <string>終了</string>
    </property>
   </action>
+  <action name="action_next_struct">
+   <property name="text">
+    <string>Next Structure</string>
+   </property>
+   <property name="shortcut">
+    <string>PgDown</string>
+   </property>
+  </action>
+  <action name="action_prev_struct">
+   <property name="text">
+    <string>Previous Structure</string>
+   </property>
+   <property name="shortcut">
+    <string>PgUp</string>
+   </property>
+  </action>
  </widget>
  <resources/>
  <connections/>
+ <buttongroups>
+  <buttongroup name="draw_struct_group"/>
+ </buttongroups>
 </ui>

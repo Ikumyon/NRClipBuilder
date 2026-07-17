@@ -112,9 +112,8 @@
   "add_history_btn": "履歴",
   "remove_layer_btn": "削除",
   "draw_line_btn": "線を描画",
-  "drawn_layer_name": "手描き線",
   "msg_draw_line_ready": "地図をクリックして直線の頂点を追加し、ダブルクリックで終点を置きます。",
-  "msg_draw_line_added": "手描き線を追加しました: {count} 点",
+  "msg_draw_line_added": "線を追加しました: {count} 点",
   "railway_rail": "普通鉄道",
   "railway_subway": "地下鉄",
   "railway_tram": "路面電車",
@@ -127,5 +126,11 @@
   "msg_fetch_osm_no_bbox": "先に地図上で範囲選択してください。",
   "msg_fetch_osm_loading": "OSM線路データを取得中...",
   "msg_fetch_osm_success": "OSM線路データを取得しました: {count:,} ways",
-  "dialog_label_has_lines": "線（路線等）も含む"
+  "dialog_label_has_lines": "線（路線等）も含む",
+  "dialog_drawn_line_title": "線の追加",
+  "dialog_drawn_line_prompt": "線の名前を入力してください:",
+  "dialog_drawn_line_structure": "構造:",
+  "structure_ground": "地上",
+  "structure_bridge": "高架",
+  "structure_tunnel": "トンネル"
 }

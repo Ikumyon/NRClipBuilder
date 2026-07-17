@@ -292,6 +292,13 @@ def get_track_type(props: dict) -> int:
         return 1
     return 3
 
+def get_node_type(props: dict) -> int:
+    if props.get('tunnel') in ('yes', 'true', '1'):
+        return 3
+    if props.get('bridge') in ('yes', 'true', '1'):
+        return 2
+    return 1
+
 def get_speed_limit(props: dict) -> float:
     maxspeed = props.get('maxspeed', '')
     if maxspeed:
@@ -309,6 +316,7 @@ def _build_turnout_input(features: list[dict[str, Any]]) -> dict[str, Any]:
     node_layer: dict[int, int] = {}
     node_track_type: dict[int, int] = {}
     node_speed: dict[int, float] = {}
+    node_type: dict[int, int] = {}
     
     next_node_id = 1
 
@@ -316,6 +324,7 @@ def _build_turnout_input(features: list[dict[str, Any]]) -> dict[str, Any]:
         props = feat.get('properties') or {}
         track_type = get_track_type(props)
         speed = get_speed_limit(props)
+        n_type = get_node_type(props)
         try:
             layer = int(props.get('layer', 0))
         except (ValueError, TypeError):
@@ -356,6 +365,10 @@ def _build_turnout_input(features: list[dict[str, Any]]) -> dict[str, Any]:
                 node_track_type.setdefault(node_id, track_type)
                 if speed > 0.0:
                     node_speed.setdefault(node_id, speed)
+                
+                existing_type = node_type.get(node_id, 1)
+                if n_type != 1 and (existing_type == 1 or n_type > existing_type):
+                    node_type[node_id] = n_type
 
     return {
         'nodes': nodes,
@@ -363,6 +376,7 @@ def _build_turnout_input(features: list[dict[str, Any]]) -> dict[str, Any]:
         'node_layer': node_layer,
         'node_track_type': node_track_type,
         'node_speed': node_speed,
+        'node_type': node_type,
     }
 
 def _find_best_continuation(
@@ -501,13 +515,17 @@ def _merge_ways_into_routes(osm: dict[str, Any]) -> dict[str, Any]:
 
 def _simplify_turnout_routes(
     route_data: dict[str, Any],
-    node_layer: dict[int, int],
+    osm: dict[str, Any],
     spline_tolerance: float,
     junction_spacing: float,
     max_spacing: float,
 ) -> list[list[tuple[int | None, float, float]]]:
     simplified_routes: list[list[tuple[int | None, float, float]]] = []
     junction_nodes: set[int] = route_data['junction_nodes']
+    
+    node_layer = osm.get('node_layer', {})
+    node_track_type = osm.get('node_track_type', {})
+    node_type = osm.get('node_type', {})
 
     for route, coords in zip(route_data['routes'], route_data['route_coords']):
         keep = [False] * len(coords)
@@ -517,7 +535,16 @@ def _simplify_turnout_routes(
         for i, node_id in enumerate(route):
             if node_id in junction_nodes:
                 keep[i] = True
+            # レイヤー境界を保護
             if i > 0 and node_layer.get(route[i - 1], 0) != node_layer.get(node_id, 0):
+                keep[i - 1] = True
+                keep[i] = True
+            # トラック種別境界を保護
+            if i > 0 and node_track_type.get(route[i - 1], 3) != node_track_type.get(node_id, 3):
+                keep[i - 1] = True
+                keep[i] = True
+            # ノード構造境界を保護
+            if i > 0 and node_type.get(route[i - 1], 1) != node_type.get(node_id, 1):
                 keep[i - 1] = True
                 keep[i] = True
 
@@ -538,9 +565,10 @@ def _make_track_node(
     track_type: int,
     speed: float,
     tangent_mode: bool,
+    node_type: int = 1,
 ) -> dict[str, Any]:
     return {
-        'node_id': node_id, 'node_type': 1, 'track_type': track_type,
+        'node_id': node_id, 'node_type': node_type, 'track_type': track_type,
         'layer': layer, 'winding': 1, 'prev_node': 0, 'next_node': 0, 'group_id': 0,
         'user_max_speed': speed, 'x': x, 'y': y,
         'user_tangent_delta': 0.0, 'next_spline_t': 0.5, 'station_group_id': 0,
@@ -563,6 +591,7 @@ def _build_track_nodes(
         last_layer = 0
         last_track_type = 3
         last_speed = 0.0
+        last_node_type = 1
         
         for original_index, x, y in route:
             if original_index is not None:
@@ -570,8 +599,9 @@ def _build_track_nodes(
                 last_layer = osm['node_layer'].get(osm_node_id, 0)
                 last_track_type = osm['node_track_type'].get(osm_node_id, 3)
                 last_speed = osm['node_speed'].get(osm_node_id, 0.0)
+                last_node_type = osm['node_type'].get(osm_node_id, 1)
             node = _make_track_node(
-                next_node_id, x, y, last_layer, last_track_type, last_speed, tangent_mode,
+                next_node_id, x, y, last_layer, last_track_type, last_speed, tangent_mode, last_node_type,
             )
 
             next_node_id += 100

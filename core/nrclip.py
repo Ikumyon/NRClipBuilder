@@ -34,7 +34,7 @@ def geojson_to_nrclip_bytes(
     route_data = _merge_ways_into_routes(osm)
     simplified = _simplify_turnout_routes(
         route_data,
-        osm['node_layer'],
+        osm,
         spline_tolerance,
         junction_spacing,
         max_spacing,

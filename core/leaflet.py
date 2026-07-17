@@ -156,7 +156,25 @@ sourceOrder.forEach(function(src) {{
   const manyFeatures = srcFeatures.length > 5000;
   layers[src] = L.geoJSON({{ type: "FeatureCollection", features: srcFeatures }}, {{
     style: function(feat) {{
-      return {{ color: featureColor(feat, src), weight: featureWeight(feat, src), opacity: 0.9, renderer: pointRenderer }};
+      let color = featureColor(feat, src);
+      let weight = featureWeight(feat, src);
+      let dashArray = null;
+      let opacity = 0.9;
+      
+      const props = feat.properties || {{}};
+      const tunnel = props.tunnel === 'yes' || props.tunnel === 'true' || props.tunnel === '1' || props.tunnel === true;
+      const bridge = props.bridge === 'yes' || props.bridge === 'true' || props.bridge === '1' || props.bridge === true;
+      
+      if (tunnel) {{
+        dashArray = '5, 8';
+        opacity = 0.65;
+        color = '#7950f2';
+      }} else if (bridge) {{
+        weight = weight + 3;
+        color = '#f76707';
+      }}
+      
+      return {{ color: color, weight: weight, opacity: opacity, dashArray: dashArray, renderer: pointRenderer }};
     }},
     pointToLayer: function(feat, latlng) {{
       const color = featureColor(feat, src);
@@ -353,7 +371,7 @@ function updateAppTitle(bounds) {{
 }}
 
 map.on('mousedown', function(e) {{
-  if (!selectMode) return;
+  if (!selectMode || drawMode) return;
   dragStartLatLng = e.latlng;
   if (activeRect) {{
     map.removeLayer(activeRect);
@@ -364,13 +382,13 @@ map.on('mousedown', function(e) {{
 }});
 
 map.on('mousemove', function(e) {{
-  if (!selectMode || !dragStartLatLng || !activeRect) return;
+  if (!selectMode || drawMode || !dragStartLatLng || !activeRect) return;
   const bounds = L.latLngBounds(dragStartLatLng, e.latlng);
   activeRect.setBounds(bounds);
 }});
 
 map.on('mouseup', function(e) {{
-  if (!selectMode || !dragStartLatLng || !activeRect) return;
+  if (!selectMode || drawMode || !dragStartLatLng || !activeRect) return;
   const bounds = L.latLngBounds(dragStartLatLng, e.latlng);
   activeRect.setBounds(bounds);
   
@@ -438,9 +456,156 @@ window.clearHistoryBounds = function() {{
 }};
 
 // --- Manual Line Drawing Logic ---
+let drawMode = false;
+let drawPoints = [];
+let drawSegments = [];
+let drawStructure = 'ground';
+let drawPreviewLine = null;
+let drawMarkers = [];
+
 window.setDrawLineMode = function(enabled) {{
-  // ロジック削除のため何もしない
+  drawMode = enabled;
+  if (enabled && selectMode) {{
+    selectMode = false;
+    dragStartLatLng = null;
+    const bboxBtn = document.getElementById('select-bbox-btn');
+    if (bboxBtn) {{
+      bboxBtn.style.backgroundColor = 'white';
+      bboxBtn.innerHTML = '{select_btn_text}';
+    }}
+    map.dragging.enable();
+  }}
+  if (enabled) {{
+    clearDrawState();
+    map.doubleClickZoom.disable();
+    map.getContainer().style.cursor = 'crosshair';
+  }} else {{
+    clearDrawState();
+    map.doubleClickZoom.enable();
+    map.getContainer().style.cursor = '';
+  }}
 }};
+
+window.setDrawStructure = function(struct) {{
+  drawStructure = struct;
+  if (drawPreviewLine) {{
+    updatePolylineStyle(drawPreviewLine, drawStructure);
+  }}
+}};
+
+function clearDrawState() {{
+  drawPoints = [];
+  drawSegments.forEach(s => map.removeLayer(s.polyline));
+  drawSegments = [];
+  if (drawPreviewLine) {{ map.removeLayer(drawPreviewLine); drawPreviewLine = null; }}
+  drawMarkers.forEach(m => map.removeLayer(m));
+  drawMarkers = [];
+}}
+
+function updatePolylineStyle(polyline, struct) {{
+  let color = '#e8590c';
+  let weight = 4;
+  let dashArray = null;
+  let opacity = 0.9;
+  
+  if (struct === 'tunnel') {{
+    dashArray = '5, 8';
+    opacity = 0.65;
+    color = '#7950f2';
+  }} else if (struct === 'bridge') {{
+    weight = 7;
+    color = '#f76707';
+  }}
+  
+  polyline.setStyle({{
+    color: color,
+    weight: weight,
+    opacity: opacity,
+    dashArray: dashArray
+  }});
+}}
+
+map.on('click', function(e) {{
+  if (!drawMode) return;
+  const latlng = e.latlng;
+  drawPoints.push(latlng);
+  
+  const len = drawPoints.length;
+  if (len >= 2) {{
+    const p1 = drawPoints[len - 2];
+    const p2 = drawPoints[len - 1];
+    const segmentLine = L.polyline([p1, p2]).addTo(map);
+    updatePolylineStyle(segmentLine, drawStructure);
+    
+    const dist = p1.distanceTo(p2);
+    const segObj = {{
+      polyline: segmentLine,
+      structure: drawStructure,
+      coords: [[p1.lng, p1.lat], [p2.lng, p2.lat]],
+      distance: dist
+    }};
+    drawSegments.push(segObj);
+  }}
+  
+  const marker = L.circleMarker(latlng, {{
+    radius: 4,
+    color: '#e8590c',
+    fillColor: '#fff',
+    fillOpacity: 1,
+    weight: 2
+  }}).addTo(map);
+  drawMarkers.push(marker);
+}});
+
+map.on('mousemove', function(e) {{
+  if (!drawMode) return;
+  const latlng = e.latlng;
+  const hasStartNode = drawPoints.length > 0;
+  const p1 = hasStartNode ? drawPoints[drawPoints.length - 1] : null;
+  if (hasStartNode) {{
+    const previewPoints = [p1, latlng];
+    if (!drawPreviewLine) {{
+      drawPreviewLine = L.polyline(previewPoints).addTo(map);
+    }} else {{
+      drawPreviewLine.setLatLngs(previewPoints);
+    }}
+    updatePolylineStyle(drawPreviewLine, drawStructure);
+  }}
+}});
+
+map.on('dblclick', function(e) {{
+  if (!drawMode) return;
+  L.DomEvent.stopPropagation(e);
+  
+  if (drawPoints.length >= 3) {{
+    drawPoints.pop();
+    const lastSeg = drawSegments.pop();
+    if (lastSeg) {{
+      map.removeLayer(lastSeg.polyline);
+    }}
+    const lastMarker = drawMarkers.pop();
+    if (lastMarker) {{
+      map.removeLayer(lastMarker);
+    }}
+  }}
+  
+  if (drawSegments.length >= 1) {{
+    const data = drawSegments.map(s => ({{
+      coords: s.coords,
+      structure: s.structure,
+      distance: s.distance
+    }}));
+    document.title = "DRAWN_LINE:" + JSON.stringify(data);
+  }} else {{
+    document.title = "DRAW_LINE_END";
+  }}
+}});
+
+map.on('contextmenu', function(e) {{
+  if (!drawMode) return;
+  L.DomEvent.stopPropagation(e);
+  document.title = "DRAW_LINE_CANCEL";
+}});
 </script>
 </body>
 </html>"""
