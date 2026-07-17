@@ -47,12 +47,12 @@ def make_leaflet_html(
   .info {{ background: white; padding: 8px 10px; border-radius: 4px; box-shadow: 0 1px 5px rgba(0,0,0,.35); font: 13px/1.4 sans-serif; }}
   .history-label {{
     background-color: rgba(255, 255, 255, 0.85);
-    border: 1px solid #3388ff;
+    border: 1px solid #f08c00;
     border-radius: 3px;
     padding: 1px 3px;
     font-size: 10px;
     font-weight: bold;
-    color: #3388ff;
+    color: #c46a00;
     box-shadow: 0 1px 3px rgba(0,0,0,0.2);
   }}
   .bbox-handle-icon.nw, .bbox-handle-icon.se, .bbox-handle-icon.nw div, .bbox-handle-icon.se div {{
@@ -85,6 +85,9 @@ def make_leaflet_html(
   .bbox-fetch-osm-btn:hover {{
     background: #1c7ed6;
   }}
+  .draw-line-preview {{
+    stroke-dasharray: 6 6;
+  }}
 </style>
 </head>
 <body>
@@ -94,7 +97,8 @@ def make_leaflet_html(
 const data = {gj};
 const lang = '{lang}';
 const initialView = {initial_view_json};
-const map = L.map('map', {{ zoomControl: true }});
+const map = L.map('map', {{ zoomControl: true, preferCanvas: true }});
+const pointRenderer = L.canvas({{ padding: 0.5 }});
 const tileConfigs = {tile_configs_json};
 tileConfigs.forEach(cfg => {{
   if (cfg.url) {{
@@ -117,30 +121,66 @@ function escapeHtml(s) {{ return s.replace(/[&<>"']/g, m => ({{'&':'&amp;','<':'
 // Dynamically create layer groups based on the "_source" (or "source") property of each feature
 const layers = {{}};
 const layerNames = {{}};
+const groupedFeatures = {{}};
+const sourceOrder = [];
 const OSM_SOURCE = "osm";
+const HISTORY_SOURCE = "過去の出力履歴";
 const osmLayerName = '{osm_abandoned_layer_name}';
+
+function isHistoryFeature(feat) {{
+  const props = (feat && feat.properties) || {{}};
+  return props._history_output === true || props._history_output === "true" || props._source === HISTORY_SOURCE;
+}}
+function featureColor(feat, src) {{
+  if (isHistoryFeature(feat)) return '#ffd43b';
+  if (src === OSM_SOURCE) return '#4c6ef5';
+  return '#d6336c';
+}}
+function featureWeight(feat, src) {{
+  if (isHistoryFeature(feat)) return 6;
+  if (src === OSM_SOURCE) return 4;
+  return 5;
+}}
 
 data.features.forEach(function(f) {{
   var src = (f.properties && (f.properties._source || f.properties.source)) || "Imported Data";
-  if (!layers[src]) {{
-    var isOsm = (src === OSM_SOURCE);
-    var isHistoryOutput = f.properties && f.properties._history_output;
-    var color = isHistoryOutput ? '#ffd43b' : (isOsm ? '#4c6ef5' : '#d6336c');
-    var weight = isHistoryOutput ? 6 : (isOsm ? 4 : 5);
-    
-    layers[src] = L.geoJSON(null, {{
-      style: function() {{ return {{ color: color, weight: weight, opacity: 0.9 }}; }},
-      pointToLayer: function(feat, latlng) {{ return L.circleMarker(latlng, {{ radius: 5, color: color, weight: 2, fillOpacity: 0.8 }}); }},
-      onEachFeature: function(feat, lyr) {{ lyr.bindPopup(propHtml(feat.properties)); }}
-    }}).addTo(map);
-    
-    if (src === OSM_SOURCE) {{
-      layerNames[src] = osmLayerName;
-    }} else {{
-      layerNames[src] = src;
-    }}
+  if (!groupedFeatures[src]) {{
+    groupedFeatures[src] = [];
+    sourceOrder.push(src);
   }}
-  layers[src].addData(f);
+  groupedFeatures[src].push(f);
+}});
+
+sourceOrder.forEach(function(src) {{
+  const srcFeatures = groupedFeatures[src];
+  const manyFeatures = srcFeatures.length > 5000;
+  layers[src] = L.geoJSON({{ type: "FeatureCollection", features: srcFeatures }}, {{
+    style: function(feat) {{
+      return {{ color: featureColor(feat, src), weight: featureWeight(feat, src), opacity: 0.9, renderer: pointRenderer }};
+    }},
+    pointToLayer: function(feat, latlng) {{
+      const color = featureColor(feat, src);
+      return L.circleMarker(latlng, {{
+        renderer: pointRenderer,
+        radius: manyFeatures ? 3 : 5,
+        color: color,
+        fillColor: color,
+        weight: manyFeatures ? 1 : 2,
+        fillOpacity: 0.8
+      }});
+    }},
+    onEachFeature: function(feat, lyr) {{
+      lyr.bindPopup(function(layer) {{
+        return propHtml(((layer.feature || feat).properties) || {{}});
+      }});
+    }}
+  }}).addTo(map);
+
+  if (src === OSM_SOURCE) {{
+    layerNames[src] = osmLayerName;
+  }} else {{
+    layerNames[src] = src;
+  }}
 }});
 
 let bounds = L.latLngBounds();
@@ -151,7 +191,11 @@ Object.keys(layers).forEach(function(src) {{
 if (initialView && Number.isFinite(initialView.lat) && Number.isFinite(initialView.lng) && Number.isFinite(initialView.zoom)) {{
   map.setView([initialView.lat, initialView.lng], initialView.zoom);
 }} else {{
-  map.setView([44.8, 142.5], 9);
+  if (bounds.isValid()) {{
+    map.fitBounds(bounds.pad(0.08));
+  }} else {{
+    map.setView([44.8, 142.5], 9);
+  }}
 }}
 
 function emitCurrentView() {{
@@ -369,9 +413,9 @@ window.clearActiveBounds = function() {{
 window.addHistoryBounds = function(w, s, e, n, name) {{
   const bounds = L.latLngBounds([[s, w], [n, e]]);
   const rect = L.rectangle(bounds, {{
-    color: "#4dabf7",
-    weight: 1,
-    fillOpacity: 0.05,
+    color: "#ffd43b",
+    weight: 2,
+    fillOpacity: 0.08,
     dashArray: "4, 4",
     className: "history-rect"
   }}).addTo(historyLayer);
@@ -391,6 +435,11 @@ window.addHistoryBounds = function(w, s, e, n, name) {{
 
 window.clearHistoryBounds = function() {{
   historyLayer.clearLayers();
+}};
+
+// --- Manual Line Drawing Logic ---
+window.setDrawLineMode = function(enabled) {{
+  // ロジック削除のため何もしない
 }};
 </script>
 </body>

@@ -87,7 +87,32 @@
           </widget>
          </item>
          <item>
-          <widget class="QGroupBox" name="filter_group">
+          <widget class="QTabWidget" name="left_tabs">
+           <property name="documentMode">
+            <bool>true</bool>
+           </property>
+           <property name="currentIndex">
+            <number>0</number>
+           </property>
+           <widget class="QWidget" name="left_filter_tab">
+            <attribute name="title">
+             <string>フィルター</string>
+            </attribute>
+            <layout class="QVBoxLayout" name="left_filter_layout">
+             <property name="leftMargin">
+              <number>0</number>
+             </property>
+             <property name="topMargin">
+              <number>0</number>
+             </property>
+             <property name="rightMargin">
+              <number>0</number>
+             </property>
+             <property name="bottomMargin">
+              <number>0</number>
+             </property>
+             <item>
+              <widget class="QGroupBox" name="filter_group">
            <property name="title">
             <string>フィルター</string>
            </property>
@@ -313,10 +338,29 @@
              </widget>
             </item>
            </layout>
-          </widget>
-         </item>
-         <item>
-          <widget class="QGroupBox" name="layer_group">
+              </widget>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QWidget" name="left_layers_tab">
+            <attribute name="title">
+             <string>レイヤー</string>
+            </attribute>
+            <layout class="QVBoxLayout" name="left_layers_layout">
+             <property name="leftMargin">
+              <number>0</number>
+             </property>
+             <property name="topMargin">
+              <number>0</number>
+             </property>
+             <property name="rightMargin">
+              <number>0</number>
+             </property>
+             <property name="bottomMargin">
+              <number>0</number>
+             </property>
+             <item>
+              <widget class="QGroupBox" name="layer_group">
            <property name="title">
             <string>レイヤー</string>
            </property>
@@ -436,6 +480,16 @@
                </widget>
               </item>
               <item>
+               <widget class="QToolButton" name="draw_line_btn">
+                <property name="text">
+                 <string>線を描画</string>
+                </property>
+                <property name="checkable">
+                 <bool>true</bool>
+                </property>
+               </widget>
+              </item>
+              <item>
                <widget class="QToolButton" name="add_history_btn">
                 <property name="text">
                  <string>履歴</string>
@@ -474,10 +528,29 @@
              </widget>
             </item>
            </layout>
-          </widget>
-         </item>
-         <item>
-          <widget class="QGroupBox" name="export_group">
+              </widget>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QWidget" name="left_export_tab">
+            <attribute name="title">
+             <string>出力</string>
+            </attribute>
+            <layout class="QVBoxLayout" name="left_export_layout">
+             <property name="leftMargin">
+              <number>0</number>
+             </property>
+             <property name="topMargin">
+              <number>0</number>
+             </property>
+             <property name="rightMargin">
+              <number>0</number>
+             </property>
+             <property name="bottomMargin">
+              <number>0</number>
+             </property>
+             <item>
+              <widget class="QGroupBox" name="export_group">
            <property name="title">
             <string>書き出し設定</string>
            </property>
@@ -709,32 +782,31 @@
              </widget>
             </item>
             <item row="7" column="0">
-             <widget class="QLabel" name="label_straight_tolerance">
+             <widget class="QLabel" name="label_track_mode">
               <property name="text">
-               <string>直線判定許容差 (m)</string>
+               <string>Track mode</string>
               </property>
              </widget>
             </item>
             <item row="7" column="1">
-             <widget class="QDoubleSpinBox" name="straight_tolerance_spin">
-              <property name="decimals">
-               <number>2</number>
-              </property>
-              <property name="minimum">
-               <double>0.010000000000000</double>
-              </property>
-              <property name="maximum">
-               <double>20.000000000000000</double>
-              </property>
-              <property name="singleStep">
-               <double>0.050000000000000</double>
-              </property>
-              <property name="value">
-               <double>0.500000000000000</double>
-              </property>
+             <widget class="QComboBox" name="track_mode_combo">
+              <item>
+               <property name="text">
+                <string>Point</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>Tangent</string>
+               </property>
+              </item>
              </widget>
             </item>
            </layout>
+              </widget>
+             </item>
+            </layout>
+           </widget>
           </widget>
          </item>
         </layout>

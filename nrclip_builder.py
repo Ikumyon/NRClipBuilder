@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import sys
 import traceback
+import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -55,7 +56,17 @@ APP_TITLE = "NRClipBuilder"
 MAX_TABLE_ROWS = 300
 
 DEFAULT_TRANSLATION: dict[str, str] = {
-    "dialog_label_has_lines": "Include lines (railways, etc.)"
+    "dialog_label_has_lines": "Include lines (railways, etc.)",
+    "label_track_mode": "Track Mode",
+    "track_mode_point": "Point",
+    "track_mode_tangent": "Tangent",
+    "left_tab_layers": "Layers",
+    "left_tab_filter": "Filter",
+    "left_tab_export": "Export",
+    "draw_line_btn": "Draw Line",
+    "drawn_layer_name": "Drawn Lines",
+    "msg_draw_line_ready": "Click to add straight-line vertices. Double-click to set the end point.",
+    "msg_draw_line_added": "Added drawn line: {count} points",
 }
 
 
@@ -167,6 +178,8 @@ class MainWindow(QMainWindow):
 
         self.add_history_btn.clicked.connect(self.on_add_history_clicked)
         self.remove_layer_btn.clicked.connect(self.on_remove_layer_clicked)
+        self.draw_line_btn.clicked.connect(self.on_draw_line_clicked)
+        self.draw_line_btn.setEnabled(HAS_WEBENGINE)
         
         self.layer_list.itemChanged.connect(self.on_layer_item_changed)
         self.layer_list.itemSelectionChanged.connect(self.on_layer_selection_changed)
@@ -197,6 +210,7 @@ class MainWindow(QMainWindow):
         self.delete_history_btn.clicked.connect(self.delete_history)
         self.clear_history_btn.clicked.connect(self.clear_history)
 
+        self.setup_track_mode_combo()
         self.load_history_from_file()
         self.load_config_from_file()
 
@@ -346,12 +360,18 @@ class MainWindow(QMainWindow):
         self.label_spline_tolerance.setText(self.tr_msg("label_spline_tolerance"))
         self.label_junction_spacing.setText(self.tr_msg("label_junction_spacing"))
         self.label_max_spacing.setText(self.tr_msg("label_max_spacing"))
-        self.label_straight_tolerance.setText(self.tr_msg("label_straight_tolerance"))
+        self.label_track_mode.setText(self.tr_msg("label_track_mode"))
+        self.track_mode_combo.setItemText(0, self.tr_msg("track_mode_point"))
+        self.track_mode_combo.setItemText(1, self.tr_msg("track_mode_tangent"))
         self.left_add_line_btn.setText(self.tr_msg("add_line_btn"))
         self.add_history_btn.setText(self.tr_msg("add_history_btn"))
         self.left_add_map_btn.setText(self.tr_msg("add_map_btn"))
         self.remove_layer_btn.setText(self.tr_msg("remove_layer_btn"))
+        self.draw_line_btn.setText(self.tr_msg("draw_line_btn"))
         self.layer_group.setTitle(self.tr_msg("layer_group"))
+        self.left_tabs.setTabText(0, self.tr_msg("left_tab_filter"))
+        self.left_tabs.setTabText(1, self.tr_msg("left_tab_layers"))
+        self.left_tabs.setTabText(2, self.tr_msg("left_tab_export"))
         
         self.railway_rail_check.setText(self.tr_msg("railway_rail"))
         self.railway_subway_check.setText(self.tr_msg("railway_subway"))
@@ -387,6 +407,14 @@ class MainWindow(QMainWindow):
         
         self.setup_icons()
 
+    def setup_track_mode_combo(self) -> None:
+        self.track_mode_combo.blockSignals(True)
+        self.track_mode_combo.clear()
+        self.track_mode_combo.addItem(self.tr_msg("track_mode_point"), "point")
+        self.track_mode_combo.addItem(self.tr_msg("track_mode_tangent"), "tangent")
+        self.track_mode_combo.setCurrentIndex(0)
+        self.track_mode_combo.blockSignals(False)
+
     def setup_icons(self) -> None:
         btn_text_color = self.palette().color(QPalette.ButtonText).name()
         icons_dir = get_resource_path("assets/icons")
@@ -401,6 +429,35 @@ class MainWindow(QMainWindow):
         self.left_add_map_btn.setIconSize(icon_size)
         self.add_history_btn.setIconSize(icon_size)
         self.remove_layer_btn.setIconSize(icon_size)
+
+    def drawn_layer_name(self) -> str:
+        return self.tr_msg("drawn_layer_name")
+
+    def ensure_drawn_layer(self) -> FeatureStore:
+        layer_name = self.drawn_layer_name()
+        store = self.layers.get(layer_name)
+        if store is None:
+            store = FeatureStore(fields=["name", "railway", "_source"])
+            self.layers[layer_name] = store
+        self.active_layers.add(layer_name)
+        return store
+
+    def set_draw_buttons_active(self, active: bool) -> None:
+        self.draw_line_btn.blockSignals(True)
+        self.draw_line_btn.setChecked(active)
+        self.draw_line_btn.blockSignals(False)
+
+    def apply_draw_line_mode(self) -> None:
+        checked = self.draw_line_btn.isChecked()
+        if HAS_WEBENGINE:
+            js_value = "true" if checked else "false"
+            self.map_widget.web.page().runJavaScript(f"window.setDrawLineMode({js_value});")
+
+    def on_draw_line_clicked(self) -> None:
+        pass
+
+    def add_drawn_line(self, coordinates: list[list[float]]) -> None:
+        pass
 
     def update_window_title(self) -> None:
         active_layer_name = self.get_selected_layer_name()
@@ -472,7 +529,7 @@ class MainWindow(QMainWindow):
 
             self.update_layer_tree()
             self.select_tree_layer(layer_name)
-            self.apply_filter()
+            self.apply_filter(preserve_view=False)
         except Exception as exc:
             QApplication.restoreOverrideCursor()
             self.log_msg(self.tr_msg("dialog_error") + str(exc))
@@ -482,7 +539,7 @@ class MainWindow(QMainWindow):
         try:
             total_count = 0
             for name, store in self.layers.items():
-                features = [f for f in store.features if geometry_is_line(f.get("geometry") or {})]
+                features = list(store.features)
                 if "osm" in name.lower() or "overpass" in name.lower():
                     filtered = self.filter_osm_features(features)
                 else:
@@ -672,6 +729,8 @@ class MainWindow(QMainWindow):
             self.map_loaded = True
             self.update_map_history_bboxes()
             self.update_map_active_bbox()
+            if self.draw_line_btn.isChecked() and HAS_WEBENGINE:
+                self.apply_draw_line_mode()
 
     def on_coordinate_edited(self) -> None:
         try:
@@ -816,13 +875,20 @@ class MainWindow(QMainWindow):
                 })
             elif entry.name in self.layers:
                 store = self.layers[entry.name]
-                path_str = str(store.source_path.resolve()) if store.source_path else ""
-                layers_data.append({
-                    "type": "line",
-                    "name": entry.name,
-                    "path": path_str,
-                    "checked": entry.checked
-                })
+                if store.source_path:
+                    layers_data.append({
+                        "type": "line",
+                        "name": entry.name,
+                        "path": str(store.source_path.resolve()),
+                        "checked": entry.checked
+                    })
+                else:
+                    layers_data.append({
+                        "type": "drawn",
+                        "name": entry.name,
+                        "checked": entry.checked,
+                        "geojson": store.feature_collection(),
+                    })
             else:
                 layers_data.append({
                     "type": "map",
@@ -831,6 +897,7 @@ class MainWindow(QMainWindow):
                 })
 
         config = {
+            "default_encoding": "utf-8",
             "lang": self.current_lang,
             "keywords": self.keyword_edit.text(),
             "fields": self.field_edit.text(),
@@ -845,7 +912,7 @@ class MainWindow(QMainWindow):
             "spline_tolerance": self.spline_tolerance_spin.value(),
             "junction_spacing": self.junction_spacing_spin.value(),
             "max_spacing": self.max_spacing_spin.value(),
-            "straight_tolerance": self.straight_tolerance_spin.value(),
+            "track_mode": self.track_mode_combo.currentData() or "point",
             "registered_maps": self.registered_maps,
             "layers": layers_data,
             "registered_lines": self.registered_lines,
@@ -879,7 +946,9 @@ class MainWindow(QMainWindow):
             self.spline_tolerance_spin.setValue(config.get("spline_tolerance", 5.0))
             self.junction_spacing_spin.setValue(config.get("junction_spacing", 30.0))
             self.max_spacing_spin.setValue(config.get("max_spacing", 200.0))
-            self.straight_tolerance_spin.setValue(config.get("straight_tolerance", 0.5))
+            track_mode = config.get("track_mode", "point")
+            track_mode_index = self.track_mode_combo.findData(track_mode)
+            self.track_mode_combo.setCurrentIndex(track_mode_index if track_mode_index != -1 else 0)
             
             self.registered_maps = config.get("registered_maps", [])
             self.registered_lines = config.get("registered_lines", [])
@@ -904,6 +973,19 @@ class MainWindow(QMainWindow):
                         self.active_maps.add(name)
                 elif l_type == "history":
                     self.show_history_bounds = checked
+                elif l_type == "drawn":
+                    geojson = layer.get("geojson")
+                    raw_features = geojson.get("features", []) if isinstance(geojson, dict) else []
+                    if isinstance(name, str) and isinstance(raw_features, list):
+                        features = [feature for feature in raw_features if isinstance(feature, dict)]
+                        for feature in features:
+                            feature.setdefault("properties", {})["_source"] = name
+                        self.layers[name] = FeatureStore(
+                            features=features,
+                            fields=collect_fields(features),
+                        )
+                        if checked:
+                            self.active_layers.add(name)
 
             # 線データを自動ロード（save_config=Falseで保存ループを防ぐ）
             for layer in layers_data:
@@ -979,7 +1061,6 @@ class MainWindow(QMainWindow):
                 self.min_lat_edit.setText(f"{s:.7f}")
                 self.max_lon_edit.setText(f"{e:.7f}")
                 self.max_lat_edit.setText(f"{n:.7f}")
-                self.use_bbox_check.setChecked(True)
                 self.update_map_active_bbox()
 
     def delete_history(self) -> None:
@@ -1054,6 +1135,38 @@ class MainWindow(QMainWindow):
         self.update_map_history_bboxes()
         self.apply_filter()
 
+    def export_bbox_for_features(self, features: list[dict[str, Any]]) -> tuple[float, float, float, float] | None:
+        if self.selected_bbox:
+            return self.selected_bbox
+        coords: list[tuple[float, float]] = []
+        for feature in features:
+            geometry = feature.get("geometry") or {}
+            for line in geometry.get("coordinates", []) if geometry.get("type") == "MultiLineString" else [geometry.get("coordinates", [])]:
+                if geometry.get("type") == "Point":
+                    continue
+                for coord in line or []:
+                    if isinstance(coord, (list, tuple)) and len(coord) >= 2:
+                        coords.append((float(coord[0]), float(coord[1])))
+        if not coords:
+            return None
+        lons = [coord[0] for coord in coords]
+        lats = [coord[1] for coord in coords]
+        return min(lons), min(lats), max(lons), max(lats)
+
+    def features_for_export(self, features: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        export_features: list[dict[str, Any]] = []
+        for feature in features:
+            if self.selected_bbox:
+                clipped_geom = clip_geometry_to_bbox(feature.get("geometry") or {}, self.selected_bbox)
+                if not clipped_geom:
+                    continue
+                new_feature = feature.copy()
+                new_feature["geometry"] = clipped_geom
+            else:
+                new_feature = feature.copy()
+            export_features.append(new_feature)
+        return export_features
+
     def _refresh_map(self, features: list[dict[str, Any]], preserve_view: bool = True) -> None:
         title = self.tr_msg("msg_filtered_count").split(":")[0] if features else "No data"
         if self.store.source_path:
@@ -1091,19 +1204,11 @@ class MainWindow(QMainWindow):
         if not name or name not in self.layers_filtered:
             QMessageBox.warning(self, self.tr_msg("msg_export_title"), "出力対象の線データレイヤーをツリーで選択してください。")
             return
-        if not self.check_bbox_required():
-            return
         filtered = self.layers_filtered[name]
         if not filtered:
             QMessageBox.information(self, self.tr_msg("msg_export_title"), self.tr_msg("msg_no_export_data"))
             return
-        export_features = []
-        for f in filtered:
-            clipped_geom = clip_geometry_to_bbox(f.get("geometry") or {}, self.selected_bbox)
-            if clipped_geom:
-                new_feat = f.copy()
-                new_feat["geometry"] = clipped_geom
-                export_features.append(new_feat)
+        export_features = self.features_for_export(filtered)
         if not export_features:
             QMessageBox.information(self, self.tr_msg("msg_export_title"), self.tr_msg("msg_no_data_in_bbox"))
             return
@@ -1120,7 +1225,9 @@ class MainWindow(QMainWindow):
         try:
             write_json(path, {"type": "FeatureCollection", "features": export_features}, pretty=True)
             self.last_output_dir = path.parent
-            self.add_to_history(path.stem, self.selected_bbox)
+            history_bbox = self.export_bbox_for_features(export_features)
+            if history_bbox:
+                self.add_to_history(path.stem, history_bbox, geojson={"type": "FeatureCollection", "features": export_features})
             self.log_msg(self.tr_msg("msg_save_success_geojson").format(path=path).replace("\n", " "))
             QMessageBox.information(self, self.tr_msg("msg_save_success_title"), self.tr_msg("msg_save_success_geojson").format(path=path))
         except Exception as exc:
@@ -1131,19 +1238,11 @@ class MainWindow(QMainWindow):
         if not name or name not in self.layers_filtered:
             QMessageBox.warning(self, self.tr_msg("msg_export_title"), "出力対象の線データレイヤーをツリーで選択してください。")
             return
-        if not self.check_bbox_required():
-            return
         filtered = self.layers_filtered[name]
         if not filtered:
             QMessageBox.information(self, self.tr_msg("msg_export_title"), self.tr_msg("msg_no_export_data"))
             return
-        export_features = []
-        for f in filtered:
-            clipped_geom = clip_geometry_to_bbox(f.get("geometry") or {}, self.selected_bbox)
-            if clipped_geom:
-                new_feat = f.copy()
-                new_feat["geometry"] = clipped_geom
-                export_features.append(new_feat)
+        export_features = self.features_for_export(filtered)
         line_features = [f for f in export_features if geometry_is_line(f.get("geometry") or {})]
         if not line_features:
             QMessageBox.information(self, self.tr_msg("msg_export_title"), self.tr_msg("msg_no_line_in_bbox"))
