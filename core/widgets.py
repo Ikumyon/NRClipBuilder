@@ -55,9 +55,13 @@ class MapWidget(QWidget):
         self.current_translation: Optional[dict[str, Any]] = None
         self.tile_configs: list[dict[str, str]] = []
         self.current_view: Optional[dict[str, Any]] = None
+        self.layer_opacities: dict[str, float] = {}
 
     def set_tile_configs(self, configs: list[dict[str, str]]) -> None:
         self.tile_configs = configs
+
+    def set_layer_opacities(self, opacities: dict[str, float]) -> None:
+        self.layer_opacities = opacities
 
 
 
@@ -99,6 +103,7 @@ class MapWidget(QWidget):
             tile_configs=self.tile_configs,
             layers_svg_base64=svg_base64,
             initial_view=initial_view,
+            layer_opacities=self.layer_opacities,
         )
 
         out = Path(tempfile.gettempdir()) / "n05_map_filter_exporter_preview.html"

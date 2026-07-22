@@ -150,7 +150,6 @@ def serialize_track_kind(w: PayloadWriter, tk: dict, ver: int) -> None:
     w.write_i64z(tk['speed_class'])
     w.write_string(tk['internal_name'])
     w.write_string(tk['secondary_name'])
-    w.write_varint(len(tk['horizons']))
     for h in tk['horizons']:
         w.write_i64z(h['speed_class'])
         w.write_f64(h['gauge'])
@@ -164,7 +163,6 @@ def serialize_track_kind(w: PayloadWriter, tk: dict, ver: int) -> None:
         w.write_i64z(h['visual_distance'])
         for f in h['flags']:
             w.write_raw_u8(f)
-        w.write_varint(len(h['textures']))
         for tex in h['textures']:
             w.write_i64z(tex['speed_class'])
             for f in tex['files']:
@@ -181,7 +179,7 @@ def deserialize_track_kind(r: PayloadReader, ver: int) -> dict:
         'secondary_name': r.read_string(),
         'horizons': [],
     }
-    for _ in range(r.read_varint()):
+    for _ in range(3):
         horizon = {
             'speed_class': r.read_i64z(),
             'gauge': r.read_f64(),
@@ -196,7 +194,7 @@ def deserialize_track_kind(r: PayloadReader, ver: int) -> dict:
             'flags': [r.read_raw_u8() for _ in range(5)],
             'textures': [],
         }
-        for _ in range(r.read_varint()):
+        for _ in range(6):
             texture = {'speed_class': r.read_i64z(), 'files': []}
             for _ in range(4):
                 texture['files'].append({

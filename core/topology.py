@@ -293,11 +293,21 @@ def get_track_type(props: dict) -> int:
     return 3
 
 def get_node_type(props: dict) -> int:
-    if props.get('tunnel') in ('yes', 'true', '1'):
-        return 3
-    if props.get('bridge') in ('yes', 'true', '1'):
-        return 2
+    # 構造物の上下関係は node_type ではなく layer で表現する。
     return 1
+
+def get_layer(props: dict) -> int:
+    raw_layer = props.get('layer')
+    if raw_layer not in (None, ''):
+        try:
+            return int(raw_layer)
+        except (ValueError, TypeError):
+            pass
+    if props.get('tunnel') in ('yes', 'true', '1', True):
+        return -1
+    if props.get('bridge') in ('yes', 'true', '1', True):
+        return 1
+    return 0
 
 def get_speed_limit(props: dict) -> float:
     maxspeed = props.get('maxspeed', '')
@@ -325,10 +335,7 @@ def _build_turnout_input(features: list[dict[str, Any]]) -> dict[str, Any]:
         track_type = get_track_type(props)
         speed = get_speed_limit(props)
         n_type = get_node_type(props)
-        try:
-            layer = int(props.get('layer', 0))
-        except (ValueError, TypeError):
-            layer = 0
+        layer = get_layer(props)
 
         for line in iter_lines_from_geometry(feat.get('geometry') or {}):
             way: list[int] = []

@@ -9,6 +9,7 @@ filters by attributes, and exports filtered GeoJSON or Turnout-compatible Overpa
 from __future__ import annotations
 
 import json
+import os
 import sys
 import traceback
 import urllib.parse
@@ -17,7 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from PySide6.QtCore import Qt, QFile, QLocale, QSize, QByteArray, QTimer
-from PySide6.QtGui import QIcon, QPixmap, QPainter, QPalette
+from PySide6.QtGui import QIcon, QPixmap, QPainter, QPalette, QKeySequence, QShortcut
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QApplication,
@@ -73,6 +74,7 @@ DEFAULT_TRANSLATION: dict[str, str] = {
     "structure_ground": "Ground",
     "structure_bridge": "Viaduct / Bridge",
     "structure_tunnel": "Tunnel",
+    "label_opacity": "Opacity",
 }
 
 
@@ -83,6 +85,7 @@ class LayerEntry:
     checked: bool = True
     removable: bool = True
     has_lines: bool = False
+    opacity: float = 1.0
     on_check_changed: Callable[[bool], None] | None = None
     on_remove: Callable[[], None] | None = None
 
@@ -98,6 +101,10 @@ class MainWindow(QMainWindow):
         # 設定・履歴管理クラスの初期化
         config_path = get_executable_dir() / "app_config.json"
         self.app_config = AppConfig(config_path)
+        self.recovery_path = config_path.with_name("nrclip_builder_recovery.json")
+        self._recovery_dirty_layers: set[str] = set()
+        self._recovery_deleted_layers: set[str] = set()
+        self._draw_line_draft: list[dict[str, Any]] = []
         history_path = get_executable_dir() / "bbox_history.json"
         self.history_manager = HistoryManager(history_path)
 
@@ -160,11 +167,14 @@ class MainWindow(QMainWindow):
         self.added_maps: set[str] = set()
         self.active_maps: set[str] = {"OpenStreetMap (OSM)"}
         self.registered_lines: list[str] = []
+        self.line_edit_undo_stack: list[dict[str, Any]] = []
+        self._draw_line_transfers: dict[str, dict[str, Any]] = {}
         
         # 独立したレイヤーの管理
         self.layers: dict[str, FeatureStore] = {}
         self.layers_filtered: dict[str, list[dict[str, Any]]] = {}
         self.active_layers: set[str] = set()
+        self.layer_opacities: dict[str, float] = {}
         self.show_history_bounds = False
 
         # 統一レイヤーエントリ
@@ -188,10 +198,13 @@ class MainWindow(QMainWindow):
         self.draw_line_btn.setCheckable(True)
         self.draw_line_btn.clicked.connect(self.on_draw_line_clicked)
         self.draw_line_btn.setEnabled(HAS_WEBENGINE)
+        self.undo_shortcut = QShortcut(QKeySequence("Ctrl+Z"), self)
+        self.undo_shortcut.activated.connect(self.undo_line_edit)
         
         self.layer_list.itemChanged.connect(self.on_layer_item_changed)
         self.layer_list.itemSelectionChanged.connect(self.on_layer_selection_changed)
         self.layer_list.model().rowsMoved.connect(self.on_layers_moved)
+        self.opacity_slider.valueChanged.connect(self.on_opacity_slider_changed)
         
         self.railway_rail_check.clicked.connect(self.apply_filter)
         self.railway_subway_check.clicked.connect(self.apply_filter)
@@ -400,6 +413,7 @@ class MainWindow(QMainWindow):
         self.draw_struct_ground_btn.setText(self.tr_msg("structure_ground"))
         self.draw_struct_bridge_btn.setText(self.tr_msg("structure_bridge"))
         self.layer_group.setTitle(self.tr_msg("layer_group"))
+        self.label_opacity.setText(self.tr_msg("label_opacity"))
         self.left_tabs.setTabText(0, self.tr_msg("left_tab_filter"))
         self.left_tabs.setTabText(1, self.tr_msg("left_tab_layers"))
         self.left_tabs.setTabText(2, self.tr_msg("left_tab_export"))
@@ -454,12 +468,22 @@ class MainWindow(QMainWindow):
         self.left_add_map_btn.setIcon(get_svg_icon(icons_dir / "map-plus.svg", btn_text_color))
         self.add_history_btn.setIcon(get_svg_icon(icons_dir / "history.svg", btn_text_color))
         self.remove_layer_btn.setIcon(get_svg_icon(icons_dir / "trash-2.svg", btn_text_color))
+        self.edit_layer_btn.setIcon(get_svg_icon(icons_dir / "pencil-line.svg", btn_text_color))
+        self.draw_line_btn.setIcon(get_svg_icon(icons_dir / "spline.svg", btn_text_color))
+        self.draw_struct_ground_btn.setIcon(get_svg_icon(icons_dir / "arrow-down-to-line.svg", btn_text_color))
+        self.draw_struct_tunnel_btn.setIcon(get_svg_icon(icons_dir / "train-front-tunnel.svg", btn_text_color))
+        self.draw_struct_bridge_btn.setIcon(get_svg_icon(icons_dir / "bridge-4.svg", btn_text_color))
         
         icon_size = QSize(16, 16)
         self.left_add_line_btn.setIconSize(icon_size)
         self.left_add_map_btn.setIconSize(icon_size)
         self.add_history_btn.setIconSize(icon_size)
         self.remove_layer_btn.setIconSize(icon_size)
+        self.edit_layer_btn.setIconSize(icon_size)
+        self.draw_line_btn.setIconSize(icon_size)
+        self.draw_struct_ground_btn.setIconSize(icon_size)
+        self.draw_struct_tunnel_btn.setIconSize(icon_size)
+        self.draw_struct_bridge_btn.setIconSize(icon_size)
 
 
 
@@ -517,18 +541,39 @@ class MainWindow(QMainWindow):
         if self.draw_line_btn.isChecked():
             self.log_msg(self.tr_msg("msg_draw_line_ready"))
 
-    def add_drawn_line(self, segments: list[dict[str, Any]]) -> None:
+    def add_drawn_line(self, segments: list[dict[str, Any]]) -> bool:
         if not segments:
             return
             
         target_layer_name = self.get_selected_layer_name()
+        if not target_layer_name or target_layer_name not in self.layers:
+            confirm = QMessageBox.question(
+                self,
+                "線の保存先が選択されていません。",
+                "新規レイヤーに追加しますか？",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes,
+            )
+            if confirm != QMessageBox.Yes:
+                return False
+            base_name = "Drawn Lines"
+            layer_name = base_name
+            suffix = 2
+            while layer_name in self.layers:
+                layer_name = f"{base_name} {suffix}"
+                suffix += 1
+            # 描画線を追加してから一度だけツリーと地図を更新する。
+            # 先に通常のレイヤー作成処理を呼ぶと、空レイヤーの再描画で描画結果が消える。
+            self.layers[layer_name] = FeatureStore(fields=["name", "railway", "_source"])
+            self.active_layers.add(layer_name)
+            target_layer_name = layer_name
         if not target_layer_name or target_layer_name not in self.layers:
             QMessageBox.warning(
                 self,
                 self.tr_msg("msg_validation_error") or "警告",
                 "描画した線を追加する宛先の線レイヤーをツリーで選択してください。\nまたは「線を追加」ボタンから空の新規レイヤーを作成してください。"
             )
-            return
+            return False
             
         store = self.layers[target_layer_name]
         
@@ -547,6 +592,8 @@ class MainWindow(QMainWindow):
             return # キャンセルまたは名前が空なら何もしない
             
         # 各セグメントを個別の Feature として登録
+        added_count = 0
+        added_features: list[dict[str, Any]] = []
         for seg in segments:
             coords = seg.get("coords")
             struct = seg.get("structure")
@@ -556,7 +603,7 @@ class MainWindow(QMainWindow):
             properties = {
                 "name": name.strip(),
                 "railway": "rail",
-                "_source": target_layer_name
+                "_source": target_layer_name,
             }
             
             if struct == "bridge":
@@ -575,6 +622,19 @@ class MainWindow(QMainWindow):
                 "properties": properties
             }
             store.features.append(feature)
+            added_features.append(feature)
+            added_count += 1
+
+        if added_count == 0:
+            QMessageBox.warning(self, "線の追加エラー", "有効な線分がありませんでした。")
+            return False
+
+        self.line_edit_undo_stack.append({
+            "kind": "add_line",
+            "store": target_layer_name,
+            "features": added_features,
+        })
+        self._mark_recovery_dirty(target_layer_name)
         
         self.update_layer_tree()
         self.select_tree_layer(target_layer_name)
@@ -582,6 +642,86 @@ class MainWindow(QMainWindow):
         self.save_config_to_file()
         
         self.log_msg(self.tr_msg("msg_draw_line_added").format(count=len(segments) + 1))
+        return True
+
+    def _mark_recovery_dirty(self, layer_name: str) -> None:
+        """変更直後に復旧対象として記録する。通常保存とは独立した退避。"""
+        self._recovery_deleted_layers.discard(layer_name)
+        self._recovery_dirty_layers.add(layer_name)
+        self.write_recovery_backup()
+
+    def write_recovery_backup(self) -> None:
+        """変更レイヤーを一時ファイル経由で即時退避する。
+
+        書き込み途中のファイルを復旧データとして扱わないよう、flush/fsync後に置換する。
+        """
+        if not self._recovery_dirty_layers and not self._recovery_deleted_layers and not self._draw_line_draft:
+            return
+        layers: list[dict[str, Any]] = []
+        for name in sorted(self._recovery_dirty_layers):
+            store = self.layers.get(name)
+            if store is None:
+                continue
+            layers.append({
+                "name": name,
+                "checked": name in self.active_layers,
+                "opacity": self.layer_opacities.get(name, 1.0),
+                "features": store.features,
+            })
+        payload = {
+            "version": 1,
+            "layers": layers,
+            "deleted_layers": sorted(self._recovery_deleted_layers),
+            "draw_line_draft": self._draw_line_draft,
+        }
+        temp_path = self.recovery_path.with_name(self.recovery_path.name + ".tmp")
+        try:
+            self.recovery_path.parent.mkdir(parents=True, exist_ok=True)
+            encoded = json.dumps(payload, ensure_ascii=False, indent=2)
+            with temp_path.open("w", encoding="utf-8", newline="\n") as handle:
+                handle.write(encoded)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp_path, self.recovery_path)
+        except Exception as exc:
+            # 通常保存の失敗に引きずられて線データを破棄しない。
+            self.log_msg(f"復旧バックアップの作成に失敗しました: {exc}")
+            try:
+                if temp_path.exists():
+                    temp_path.unlink()
+            except Exception:
+                pass
+
+    def restore_recovery_backup(self) -> None:
+        """前回の保存失敗・異常終了時に退避線を現在の状態へ戻す。"""
+        if not self.recovery_path.exists():
+            return
+        try:
+            payload = json.loads(self.recovery_path.read_text(encoding="utf-8"))
+            for name in payload.get("deleted_layers", []):
+                self.layers.pop(name, None)
+                self.active_layers.discard(name)
+            for item in payload.get("layers", []):
+                name = item.get("name")
+                features = item.get("features")
+                if not name or not isinstance(features, list):
+                    continue
+                self.layers[name] = FeatureStore(
+                    features=features,
+                    fields=collect_fields(features),
+                )
+                if item.get("checked", True):
+                    self.active_layers.add(name)
+                else:
+                    self.active_layers.discard(name)
+                self.layer_opacities[name] = float(item.get("opacity", 1.0))
+            draft = payload.get("draw_line_draft")
+            if isinstance(draft, list) and draft:
+                self._draw_line_draft = draft
+                self.log_msg("未確定の描画線も復旧バックアップに残っています。")
+            self.log_msg("保存前の線データを復旧バックアップから復元しました。")
+        except Exception as exc:
+            self.log_msg(f"復旧バックアップを読み込めませんでした: {exc}")
 
     def update_window_title(self) -> None:
         active_layer_name = self.get_selected_layer_name()
@@ -715,13 +855,15 @@ class MainWindow(QMainWindow):
             if entry.name == "OpenStreetMap (OSM)":
                 configs.append({
                     "url": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-                    "attribution": "&copy; OpenStreetMap contributors"
+                    "attribution": "&copy; OpenStreetMap contributors",
+                    "opacity": self.layer_opacities.get(entry.name, 1.0),
                 })
             elif entry.name in registered_map_by_name:
                 custom_map = registered_map_by_name[entry.name]
                 configs.append({
                     "url": custom_map.get("url", ""),
-                    "attribution": custom_map.get("attribution", "")
+                    "attribution": custom_map.get("attribution", ""),
+                    "opacity": self.layer_opacities.get(entry.name, 1.0),
                 })
         self.map_widget.set_tile_configs(configs)
         if reload_map:
@@ -957,19 +1099,232 @@ class MainWindow(QMainWindow):
                     self.select_history_row_by_name(name)
                 except ValueError:
                     pass
+        elif title.startswith("DRAWN_LINE_DRAFT_CHUNK:"):
+            parts = title.split(":", 4)
+            if len(parts) == 5:
+                transfer_id, index_text, total_text, encoded_chunk = parts[1:]
+                try:
+                    index = int(index_text)
+                    total = int(total_text)
+                    transfer = self._draw_line_transfers.setdefault(
+                        "draft:" + transfer_id, {"total": total, "chunks": {}}
+                    )
+                    transfer["chunks"][index] = urllib.parse.unquote(encoded_chunk)
+                    if len(transfer["chunks"]) == total:
+                        payload = "".join(transfer["chunks"][i] for i in range(total))
+                        del self._draw_line_transfers["draft:" + transfer_id]
+                        self._draw_line_draft = json.loads(payload)
+                        self.write_recovery_backup()
+                except Exception as e:
+                    self._draw_line_transfers.pop("draft:" + transfer_id, None)
+                    self.log_msg(f"描画途中のバックアップに失敗しました: {e}")
+        elif title.startswith("DRAWN_LINE_DRAFT:"):
+            try:
+                self._draw_line_draft = json.loads(title[18:])
+                self.write_recovery_backup()
+            except Exception as e:
+                self.log_msg(f"描画途中のバックアップに失敗しました: {e}")
+        elif title.startswith("DRAWN_LINE_CHUNK:"):
+            parts = title.split(":", 4)
+            if len(parts) == 5:
+                transfer_id, index_text, total_text, encoded_chunk = parts[1:]
+                try:
+                    index = int(index_text)
+                    total = int(total_text)
+                    transfer = self._draw_line_transfers.setdefault(
+                        transfer_id, {"total": total, "chunks": {}}
+                    )
+                    transfer["chunks"][index] = urllib.parse.unquote(encoded_chunk)
+                    if len(transfer["chunks"]) == total:
+                        payload = "".join(transfer["chunks"][i] for i in range(total))
+                        del self._draw_line_transfers[transfer_id]
+                        self.finish_drawn_line(json.loads(payload))
+                except Exception as e:
+                    self._draw_line_transfers.pop(transfer_id, None)
+                    self.log_msg(f"Error parsing drawn line: {e}")
+                    QMessageBox.critical(self, "線の追加エラー", f"線をレイヤーに追加できませんでした。\n{e}")
         elif title.startswith("DRAWN_LINE:"):
             coords_str = title[11:]
             try:
                 coordinates = json.loads(coords_str)
-                self.add_drawn_line(coordinates)
+                added = self.add_drawn_line(coordinates)
             except Exception as e:
                 self.log_msg(f"Error parsing drawn line: {e}")
-            self.set_draw_buttons_active(False)
-            self.apply_draw_line_mode()
+                QMessageBox.critical(self, "線の追加エラー", f"線をレイヤーに追加できませんでした。\n{e}")
+                added = False
+            if added:
+                self._draw_line_draft = []
+                self.write_recovery_backup()
+                self.set_draw_buttons_active(False)
+                self.apply_draw_line_mode()
+            elif HAS_WEBENGINE:
+                # 未確定の線を残したまま、再確定できる状態に戻す。
+                self.map_widget.web.page().runJavaScript("document.title = 'DRAW_LINE_ACTIVE';")
+        elif title.startswith("EDITED_LINE:"):
+            try:
+                edit_data = json.loads(title[12:])
+                self.update_line_geometry(edit_data)
+            except Exception as e:
+                self.log_msg(f"Error updating drawn line: {e}")
+        elif title.startswith("EDITED_STRUCTURE:"):
+            try:
+                self.update_line_structure(json.loads(title[17:]))
+            except Exception as e:
+                self.log_msg(f"Error updating line structure: {e}")
         elif title == "DRAW_LINE_END":
             self.set_draw_buttons_active(False)
             self.apply_draw_line_mode()
         elif title == "DRAW_LINE_CANCEL":
+            self._draw_line_draft = []
+            self.write_recovery_backup()
+            self.set_draw_buttons_active(False)
+            self.apply_draw_line_mode()
+            self.log_msg("描画をキャンセルしました")
+
+    def finish_drawn_line(self, coordinates: list[dict[str, Any]]) -> None:
+        added = self.add_drawn_line(coordinates)
+        if added:
+            self._draw_line_draft = []
+            self.write_recovery_backup()
+            self.set_draw_buttons_active(False)
+            self.apply_draw_line_mode()
+        elif HAS_WEBENGINE:
+            self.map_widget.web.page().runJavaScript("document.title = 'DRAW_LINE_ACTIVE';")
+
+    def update_line_geometry(self, edit_data: dict[str, Any]) -> None:
+        source = edit_data.get("source")
+        old_coords = edit_data.get("old_coords")
+        coords = edit_data.get("coords")
+        if not isinstance(old_coords, list) or not isinstance(coords, list):
+            return
+        changed = False
+        for store in self.layers.values():
+            for feature in store.features:
+                props = feature.get("properties") or {}
+                if source and props.get("_source") != source:
+                    continue
+                geometry = feature.get("geometry") or {}
+                if geometry.get("type") != "LineString" or geometry.get("coordinates") != old_coords:
+                    continue
+                self.line_edit_undo_stack.append({
+                    "source": source,
+                    "old_coords": [point[:] for point in old_coords],
+                    "new_coords": [point[:] for point in coords],
+                })
+                geometry["coordinates"] = coords
+                feature["geometry"] = geometry
+                changed = True
+                layer_name = props.get("_source")
+                if layer_name:
+                    self._mark_recovery_dirty(layer_name)
+                break
+        if changed:
+            self.save_config_to_file()
+            active_layer_name = self.get_selected_layer_name()
+            if active_layer_name and active_layer_name in self.layers_filtered:
+                self._refresh_table(self.layers_filtered[active_layer_name])
+
+    def update_line_structure(self, edit_data: dict[str, Any]) -> None:
+        source = edit_data.get("source")
+        coords = edit_data.get("coords")
+        structure = edit_data.get("structure")
+        if not isinstance(coords, list) or structure not in {"ground", "bridge", "tunnel"}:
+            return
+        for store in self.layers.values():
+            for feature in store.features:
+                props = feature.get("properties") or {}
+                geometry = feature.get("geometry") or {}
+                if source and props.get("_source") != source:
+                    continue
+                if geometry.get("type") != "LineString" or geometry.get("coordinates") != coords:
+                    continue
+                old_structure = "tunnel" if props.get("tunnel") in ("yes", "true", "1", True) else "bridge" if props.get("bridge") in ("yes", "true", "1", True) else "ground"
+                self.line_edit_undo_stack.append({
+                    "kind": "structure",
+                    "source": source,
+                    "coords": [point[:] for point in coords],
+                    "old_structure": old_structure,
+                    "new_structure": structure,
+                })
+                props.pop("bridge", None)
+                props.pop("tunnel", None)
+                props["layer"] = {"tunnel": -1, "bridge": 1, "ground": 0}[structure]
+                if structure == "bridge":
+                    props["bridge"] = "yes"
+                elif structure == "tunnel":
+                    props["tunnel"] = "yes"
+                feature["properties"] = props
+                if props.get("_source"):
+                    self._mark_recovery_dirty(props["_source"])
+                self.save_config_to_file()
+                return
+
+    def undo_line_edit(self) -> None:
+        if not self.line_edit_undo_stack:
+            return
+        edit = self.line_edit_undo_stack.pop()
+        if edit.get("kind") == "add_line":
+            store = self.layers.get(edit.get("store"))
+            added_features = edit.get("features") or []
+            if store is not None:
+                added_ids = {id(feature) for feature in added_features}
+                store.features[:] = [feature for feature in store.features if id(feature) not in added_ids]
+                store_name = edit.get("store")
+                if store_name:
+                    self._mark_recovery_dirty(store_name)
+                self.save_config_to_file()
+                self.apply_filter()
+                self.log_msg("直前に追加した線を取り消しました")
+            return
+        if edit.get("kind") == "structure":
+            target = edit.get("new_structure")
+            restore = edit.get("old_structure")
+            coords = edit.get("coords")
+            if target and restore and isinstance(coords, list):
+                self.update_line_structure({"source": edit.get("source"), "coords": coords, "structure": restore})
+                if self.line_edit_undo_stack:
+                    self.line_edit_undo_stack.pop()
+                if HAS_WEBENGINE:
+                    source_json = json.dumps(edit.get("source", ""), ensure_ascii=False)
+                    coords_json = json.dumps(coords, ensure_ascii=False)
+                    restore_json = json.dumps(restore, ensure_ascii=False)
+                    self.map_widget.web.page().runJavaScript(
+                        f"window.applyLineStructure({source_json}, {coords_json}, {restore_json});"
+                    )
+                self.log_msg("線の構造変更を取り消しました")
+            return
+        source = edit.get("source")
+        current_coords = edit.get("new_coords")
+        previous_coords = edit.get("old_coords")
+        if not isinstance(current_coords, list) or not isinstance(previous_coords, list):
+            return
+        for store in self.layers.values():
+            for feature in store.features:
+                props = feature.get("properties") or {}
+                if source and props.get("_source") != source:
+                    continue
+                geometry = feature.get("geometry") or {}
+                if geometry.get("type") == "LineString" and geometry.get("coordinates") == current_coords:
+                    geometry["coordinates"] = previous_coords
+                    feature["geometry"] = geometry
+                    self.save_config_to_file()
+                    if HAS_WEBENGINE:
+                        source_json = json.dumps(source or "", ensure_ascii=False)
+                        current_json = json.dumps(current_coords, ensure_ascii=False)
+                        previous_json = json.dumps(previous_coords, ensure_ascii=False)
+                        self.map_widget.web.page().runJavaScript(
+                            f"window.restoreLineGeometry({source_json}, {current_json}, {previous_json});"
+                        )
+                    self.log_msg("直前のノード移動を取り消しました")
+                    return
+            # Leaflet側ですでに線を更新済みなので、マップ全体は再生成しない。
+            active_layer_name = self.get_selected_layer_name()
+            if active_layer_name and active_layer_name in self.layers_filtered:
+                self._refresh_table(self.layers_filtered[active_layer_name])
+        if False:
+            self.set_draw_buttons_active(False)
+            self.apply_draw_line_mode()
+        if False:
             self.set_draw_buttons_active(False)
             self.apply_draw_line_mode()
             self.log_msg("描画をキャンセルしました")
@@ -1001,17 +1356,20 @@ class MainWindow(QMainWindow):
     def save_config_to_file(self) -> None:
         layers_data = []
         for entry in self.layer_entries:
+            opacity_val = self.layer_opacities.get(entry.name, 1.0)
             if entry.name == "OpenStreetMap (OSM)":
                 layers_data.append({
                     "type": "map",
                     "name": entry.name,
-                    "checked": entry.checked
+                    "checked": entry.checked,
+                    "opacity": opacity_val
                 })
             elif entry.name == "過去の出力履歴":
                 layers_data.append({
                     "type": "history",
                     "name": entry.name,
-                    "checked": entry.checked
+                    "checked": entry.checked,
+                    "opacity": opacity_val
                 })
             elif entry.name in self.layers:
                 store = self.layers[entry.name]
@@ -1020,13 +1378,15 @@ class MainWindow(QMainWindow):
                         "type": "line",
                         "name": entry.name,
                         "path": str(store.source_path.resolve()),
-                        "checked": entry.checked
+                        "checked": entry.checked,
+                        "opacity": opacity_val
                     })
             else:
                 layers_data.append({
                     "type": "map",
                     "name": entry.name,
-                    "checked": entry.checked
+                    "checked": entry.checked,
+                    "opacity": opacity_val
                 })
 
         config = {
@@ -1056,6 +1416,7 @@ class MainWindow(QMainWindow):
         try:
             config = self.app_config.load()
             if not config:
+                self.restore_recovery_backup()
                 return
             self.keyword_edit.setText(config.get("keywords", ""))
             self.field_edit.setText(config.get("fields", ""))
@@ -1098,6 +1459,9 @@ class MainWindow(QMainWindow):
                 l_type = layer.get("type")
                 name = layer.get("name")
                 checked = layer.get("checked", False)
+                opacity = layer.get("opacity", 1.0)
+                if name:
+                    self.layer_opacities[name] = opacity
                 
                 if l_type == "map":
                     if name != "OpenStreetMap (OSM)":
@@ -1119,9 +1483,13 @@ class MainWindow(QMainWindow):
                         if path.exists():
                             self.load_path(path, checked=checked, save_config=False)
 
+            # 通常設定より新しい可能性がある退避線を最後に適用する。
+            self.restore_recovery_backup()
+
             self.update_layer_tree()
             self.restore_layer_order_from_config(layers_data)
             self.update_layer_tree()
+            self.map_widget.set_layer_opacities(self.layer_opacities)
             self.apply_active_map()
         except Exception as e:
             print(f"Error loading config: {e}")
@@ -1528,9 +1896,14 @@ class MainWindow(QMainWindow):
         entry = self.layer_entries[idx]
         if not entry.removable:
             return
+        if entry.name in self.layers:
+            self._recovery_dirty_layers.discard(entry.name)
+            self._recovery_deleted_layers.add(entry.name)
         if entry.on_remove:
             entry.on_remove()
         self.layer_entries.pop(idx)
+        self.write_recovery_backup()
+        self.save_config_to_file()
         self.update_layer_tree()
         self.log_msg(f"削除しました: {entry.name}")
 
@@ -1556,6 +1929,9 @@ class MainWindow(QMainWindow):
         for feature in store.features:
             feature.setdefault("properties", {})["_source"] = name
         self.layers[name] = store
+        self._recovery_dirty_layers.discard(entry.name)
+        self._recovery_deleted_layers.add(entry.name)
+        self._mark_recovery_dirty(name)
         if entry.name in self.active_layers:
             self.active_layers.remove(entry.name)
             self.active_layers.add(name)
@@ -1585,6 +1961,7 @@ class MainWindow(QMainWindow):
             checked=("OpenStreetMap (OSM)" in self.active_maps),
             removable=False,
             has_lines=True,
+            opacity=self.layer_opacities.get("OpenStreetMap (OSM)", 1.0),
         )
         osm_entry.on_check_changed = _make_map_check("OpenStreetMap (OSM)")
         entries.append(osm_entry)
@@ -1608,6 +1985,7 @@ class MainWindow(QMainWindow):
                 checked=(cm_name in self.active_maps),
                 removable=True,
                 has_lines=cm.get("has_lines", False),
+                opacity=self.layer_opacities.get(cm_name, 1.0),
                 on_remove=_make_map_remove(),
             )
             entry.on_check_changed = _make_map_check(cm_name)
@@ -1639,6 +2017,7 @@ class MainWindow(QMainWindow):
                 checked=(ln in self.active_layers),
                 removable=True,
                 has_lines=True,
+                opacity=self.layer_opacities.get(ln, 1.0),
                 on_check_changed=_make_line_check(),
                 on_remove=_make_line_remove(),
             ))
@@ -1665,6 +2044,7 @@ class MainWindow(QMainWindow):
                 name="過去の出力履歴",
                 checked=self.show_history_bounds,
                 removable=True,
+                opacity=self.layer_opacities.get("過去の出力履歴", 1.0),
                 on_check_changed=_history_check,
                 on_remove=_history_remove,
             ))
@@ -1752,10 +2132,22 @@ class MainWindow(QMainWindow):
                     else:
                         # 線を含む地図の場合
                         self.filter_stack.setCurrentIndex(1)
+                
+                # 選択されているレイヤーに対応する不透明度をスライダーに適用
+                opacity_val = self.layer_opacities.get(entry.name, 1.0)
+                self.opacity_slider.blockSignals(True)
+                self.opacity_slider.setEnabled(True)
+                self.opacity_slider.setValue(int(opacity_val * 100))
+                self.opacity_slider.blockSignals(False)
+                self.opacity_val_label.setText(f"{int(opacity_val * 100)}%")
             else:
                 self.filter_group.setEnabled(False)
+                self.opacity_slider.setEnabled(False)
+                self.opacity_val_label.setText("100%")
         else:
             self.filter_group.setEnabled(False)
+            self.opacity_slider.setEnabled(False)
+            self.opacity_val_label.setText("100%")
 
         if active_layer_name and active_layer_name in self.layers_filtered:
             self._refresh_table(self.layers_filtered[active_layer_name])
@@ -1763,6 +2155,29 @@ class MainWindow(QMainWindow):
             self.table.clear()
             self.table.setRowCount(0)
             self.table.setColumnCount(0)
+
+    def on_opacity_slider_changed(self, value: int) -> None:
+        selected_items = self.layer_list.selectedItems()
+        if not selected_items:
+            return
+        item = selected_items[0]
+        idx = item.data(Qt.UserRole)
+        if idx is None or idx >= len(self.layer_entries):
+            return
+        entry = self.layer_entries[idx]
+        
+        opacity = value / 100.0
+        self.layer_opacities[entry.name] = opacity
+        self.opacity_val_label.setText(f"{value}%")
+        
+        self.map_widget.set_layer_opacities(self.layer_opacities)
+        
+        is_map = (entry.name == "OpenStreetMap (OSM)" or entry.name in [m.get("name") for m in self.registered_maps])
+        if is_map:
+            self.apply_active_map(reload_map=True, preserve_view=True)
+        else:
+            self.apply_filter()
+        self.save_config_to_file()
 
     def get_selected_layer_name(self) -> Optional[str]:
         selected = self.layer_list.selectedItems()
@@ -1804,6 +2219,9 @@ def main() -> int:
         if not icon.isNull():
             app.setWindowIcon(icon)
     win = MainWindow()
+    # Windowsでは生成後にも明示設定しないと、タスクバーが汎用アイコンを保持する場合がある。
+    if icon_path.exists():
+        win.setWindowIcon(QIcon(str(icon_path.resolve())))
     if len(sys.argv) > 1:
         path = Path(sys.argv[1])
         if path.exists():

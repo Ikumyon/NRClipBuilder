@@ -1,0 +1,1072 @@
+{
+  "version": 1,
+  "layers": [
+    {
+      "name": "Drawn Lines",
+      "checked": true,
+      "opacity": 1.0,
+      "features": [
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.68300835702348,
+                43.2150461168272
+              ],
+              [
+                144.68804904038547,
+                43.21292038378924
+              ]
+            ]
+          },
+          "properties": {
+            "name": "菱川線",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "distance": "472.0 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.68804904038547,
+                43.21292038378924
+              ],
+              [
+                144.69720805478542,
+                43.21174807728354
+              ]
+            ]
+          },
+          "properties": {
+            "name": "菱川線",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "distance": "753.6 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.69720805478542,
+                43.21174807728354
+              ],
+              [
+                144.70240723514397,
+                43.20922862280707
+              ]
+            ]
+          },
+          "properties": {
+            "name": "菱川線",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "distance": "506.0 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.70240723514397,
+                43.20922862280707
+              ],
+              [
+                144.7035655179955,
+                43.20816566819017
+              ]
+            ]
+          },
+          "properties": {
+            "name": "菱川線",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "distance": "150.9 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.7035655179955,
+                43.20816566819017
+              ],
+              [
+                144.70607513084042,
+                43.20546129502469
+              ]
+            ]
+          },
+          "properties": {
+            "name": "菱川線",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "distance": "363.0 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.70607513084042,
+                43.20546129502469
+              ],
+              [
+                144.70879924050968,
+                43.203788593009484
+              ]
+            ]
+          },
+          "properties": {
+            "name": "菱川線",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "distance": "288.7 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.70879924050968,
+                43.203788593009484
+              ],
+              [
+                144.71229553874664,
+                43.20286624237434
+              ]
+            ]
+          },
+          "properties": {
+            "name": "菱川線",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "distance": "301.4 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.71229553874664,
+                43.20286624237434
+              ],
+              [
+                144.7159634344431,
+                43.202022044825
+              ]
+            ]
+          },
+          "properties": {
+            "name": "菱川線",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "distance": "311.8 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.7159634344431,
+                43.202022044825
+              ],
+              [
+                144.71883769188946,
+                43.20142797288041
+              ]
+            ]
+          },
+          "properties": {
+            "name": "菱川線",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "distance": "242.2 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.71883769188946,
+                43.20142797288041
+              ],
+              [
+                144.72315969503947,
+                43.20022176918185
+              ]
+            ]
+          },
+          "properties": {
+            "name": "菱川線",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "distance": "375.1 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.72315969503947,
+                43.20022176918185
+              ],
+              [
+                144.7289296596146,
+                43.19779847316062
+              ]
+            ]
+          },
+          "properties": {
+            "name": "菱川線",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "distance": "539.8 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.7289296596146,
+                43.19779847316062
+              ],
+              [
+                144.73076778875307,
+                43.19651099513887
+              ]
+            ]
+          },
+          "properties": {
+            "name": "菱川線",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "distance": "206.6 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.73076778875307,
+                43.19651099513887
+              ],
+              [
+                144.73216201811135,
+                43.194462800889056
+              ]
+            ]
+          },
+          "properties": {
+            "name": "菱川線",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "distance": "254.3 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.73216201811135,
+                43.194462800889056
+              ],
+              [
+                144.7317544741451,
+                43.191851644418115
+              ]
+            ]
+          },
+          "properties": {
+            "name": "菱川線",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "distance": "292.2 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.7317544741451,
+                43.191851644418115
+              ],
+              [
+                144.73126832085524,
+                43.188115065360996
+              ]
+            ]
+          },
+          "properties": {
+            "name": "菱川線",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "bridge": "yes",
+            "distance": "417.4 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.73126832085524,
+                43.188115065360996
+              ],
+              [
+                144.73113962276065,
+                43.187020468399126
+              ]
+            ]
+          },
+          "properties": {
+            "name": "菱川線",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "bridge": "yes",
+            "distance": "122.2 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.73113962276065,
+                43.187020468399126
+              ],
+              [
+                144.72962384476548,
+                43.18554533771382
+              ]
+            ]
+          },
+          "properties": {
+            "name": "菱川線",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "bridge": "yes",
+            "distance": "205.0 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.72962384476548,
+                43.18554533771382
+              ],
+              [
+                144.727052426211,
+                43.184448485695114
+              ]
+            ]
+          },
+          "properties": {
+            "name": "菱川線",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "bridge": "yes",
+            "distance": "241.5 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.727052426211,
+                43.184448485695114
+              ],
+              [
+                144.72613499821773,
+                43.183498079602316
+              ]
+            ]
+          },
+          "properties": {
+            "name": "菱川線",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "distance": "129.2 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.72613499821773,
+                43.183498079602316
+              ],
+              [
+                144.72504456788988,
+                43.18139848749488
+              ]
+            ]
+          },
+          "properties": {
+            "name": "菱川線",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "bridge": "yes",
+            "distance": "249.6 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.72504456788988,
+                43.18139848749488
+              ],
+              [
+                144.72407654247144,
+                43.1770866678508
+              ]
+            ]
+          },
+          "properties": {
+            "name": "菱川線",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "tunnel": "yes",
+            "distance": "485.8 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.72407654247144,
+                43.1770866678508
+              ],
+              [
+                144.72407654247144,
+                43.1770866678508
+              ]
+            ]
+          },
+          "properties": {
+            "name": "菱川線",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "tunnel": "yes",
+            "distance": "0.0 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.78523070957812,
+                43.096615641956376
+              ],
+              [
+                144.78574550195657,
+                43.09851051856158
+              ]
+            ]
+          },
+          "properties": {
+            "name": "Line 23",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "distance": "214.8 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.78574550195657,
+                43.09851051856158
+              ],
+              [
+                144.78505912010831,
+                43.10107957501557
+              ]
+            ]
+          },
+          "properties": {
+            "name": "Line 23",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "distance": "291.1 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.78505912010831,
+                43.10107957501557
+              ],
+              [
+                144.7842011008522,
+                43.103016126936886
+              ]
+            ]
+          },
+          "properties": {
+            "name": "Line 23",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "distance": "226.3 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.7842011008522,
+                43.103016126936886
+              ],
+              [
+                144.7820990319735,
+                43.10530226066451
+              ]
+            ]
+          },
+          "properties": {
+            "name": "Line 23",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "distance": "306.2 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.7820990319735,
+                43.10530226066451
+              ],
+              [
+                144.7795465197637,
+                43.108559070851605
+              ]
+            ]
+          },
+          "properties": {
+            "name": "Line 23",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "distance": "417.2 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.7795465197637,
+                43.108559070851605
+              ],
+              [
+                144.77635207506913,
+                43.114741329463975
+              ]
+            ]
+          },
+          "properties": {
+            "name": "Line 23",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "bridge": "yes",
+            "distance": "734.7 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.77635207506913,
+                43.114741329463975
+              ],
+              [
+                144.77124269627188,
+                43.120379605704414
+              ]
+            ]
+          },
+          "properties": {
+            "name": "Line 23",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "bridge": "yes",
+            "distance": "751.7 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.77124269627188,
+                43.120379605704414
+              ],
+              [
+                144.7640951422313,
+                43.127317446965506
+              ]
+            ]
+          },
+          "properties": {
+            "name": "Line 23",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "bridge": "yes",
+            "distance": "965.2 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.7640951422313,
+                43.127317446965506
+              ],
+              [
+                144.7571878011886,
+                43.134440302628164
+              ]
+            ]
+          },
+          "properties": {
+            "name": "Line 23",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "bridge": "yes",
+            "distance": "970.3 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.7571878011886,
+                43.134440302628164
+              ],
+              [
+                144.75373161391687,
+                43.140789393330245
+              ]
+            ]
+          },
+          "properties": {
+            "name": "Line 23",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "bridge": "yes",
+            "distance": "759.6 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.75373161391687,
+                43.140789393330245
+              ],
+              [
+                144.75228056513356,
+                43.14185124373568
+              ]
+            ]
+          },
+          "properties": {
+            "name": "Line 23",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "bridge": "yes",
+            "distance": "166.7 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.75228056513356,
+                43.14185124373568
+              ],
+              [
+                144.74441243398567,
+                43.145253659932145
+              ]
+            ]
+          },
+          "properties": {
+            "name": "Line 23",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "bridge": "yes",
+            "distance": "742.1 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.74441243398567,
+                43.145253659932145
+              ],
+              [
+                144.73738079585493,
+                43.1485805097334
+              ]
+            ]
+          },
+          "properties": {
+            "name": "Line 23",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "bridge": "yes",
+            "distance": "679.9 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.72407654247144,
+                43.1770866678508
+              ],
+              [
+                144.72330486655272,
+                43.17301267036644
+              ]
+            ]
+          },
+          "properties": {
+            "name": "Line 36",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "bridge": "yes",
+            "distance": "457.3 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.72330486655272,
+                43.17301267036644
+              ],
+              [
+                144.72296154379882,
+                43.16988281282217
+              ]
+            ]
+          },
+          "properties": {
+            "name": "Line 36",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "bridge": "yes",
+            "distance": "349.1 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.72296154379882,
+                43.16988281282217
+              ],
+              [
+                144.72236095269065,
+                43.16637898715246
+              ]
+            ]
+          },
+          "properties": {
+            "name": "Line 36",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "bridge": "yes",
+            "distance": "392.6 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.72236095269065,
+                43.16637898715246
+              ],
+              [
+                144.72325442623563,
+                43.1617419861781
+              ]
+            ]
+          },
+          "properties": {
+            "name": "Line 36",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "bridge": "yes",
+            "distance": "520.7 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.72325442623563,
+                43.1617419861781
+              ],
+              [
+                144.72560229159194,
+                43.1583708582421
+              ]
+            ]
+          },
+          "properties": {
+            "name": "Line 36",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "tunnel": "yes",
+            "distance": "420.5 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.72560229159194,
+                43.1583708582421
+              ],
+              [
+                144.72700878315098,
+                43.155844807394104
+              ]
+            ]
+          },
+          "properties": {
+            "name": "Line 36",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "distance": "303.2 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.72700878315098,
+                43.155844807394104
+              ],
+              [
+                144.72910268820934,
+                43.153633696533056
+              ]
+            ]
+          },
+          "properties": {
+            "name": "Line 36",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "tunnel": "yes",
+            "distance": "298.8 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.72910268820934,
+                43.153633696533056
+              ],
+              [
+                144.73020717907144,
+                43.15295071484407
+              ]
+            ]
+          },
+          "properties": {
+            "name": "Line 36",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "distance": "117.5 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.73020717907144,
+                43.15295071484407
+              ],
+              [
+                144.73207217522517,
+                43.151349271306685
+              ]
+            ]
+          },
+          "properties": {
+            "name": "Line 36",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "tunnel": "yes",
+            "distance": "233.7 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.73207217522517,
+                43.151349271306685
+              ],
+              [
+                144.7326409233816,
+                43.15102030957901
+              ]
+            ]
+          },
+          "properties": {
+            "name": "Line 36",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "distance": "58.9 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.7326409233816,
+                43.15102030957901
+              ],
+              [
+                144.73738079585493,
+                43.1485805097334
+              ]
+            ]
+          },
+          "properties": {
+            "name": "Line 36",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "tunnel": "yes",
+            "distance": "470.6 m"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                144.73738079585493,
+                43.1485805097334
+              ],
+              [
+                144.7380998675614,
+                43.148618530952554
+              ]
+            ]
+          },
+          "properties": {
+            "name": "Line 36",
+            "railway": "rail",
+            "_source": "Drawn Lines",
+            "tunnel": "yes",
+            "distance": "58.5 m"
+          }
+        }
+      ]
+    }
+  ],
+  "deleted_layers": [],
+  "draw_line_draft": []
+}

@@ -35,7 +35,7 @@
       <widget class="QScrollArea" name="leftScrollArea">
        <property name="minimumSize">
         <size>
-         <width>360</width>
+         <width>0</width>
          <height>0</height>
         </size>
        </property>
@@ -45,6 +45,9 @@
          <height>16777215</height>
         </size>
        </property>
+       <property name="horizontalScrollBarPolicy">
+        <enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOff</enum>
+       </property>
        <property name="widgetResizable">
         <bool>true</bool>
        </property>
@@ -53,7 +56,7 @@
          <rect>
           <x>0</x>
           <y>0</y>
-          <width>516</width>
+          <width>685</width>
           <height>762</height>
          </rect>
         </property>
@@ -88,11 +91,11 @@
          </item>
          <item>
           <widget class="QTabWidget" name="left_tabs">
-           <property name="documentMode">
-            <bool>true</bool>
-           </property>
            <property name="currentIndex">
             <number>0</number>
+           </property>
+           <property name="documentMode">
+            <bool>true</bool>
            </property>
            <widget class="QWidget" name="left_filter_tab">
             <attribute name="title">
@@ -113,231 +116,231 @@
              </property>
              <item>
               <widget class="QGroupBox" name="filter_group">
-           <property name="title">
-            <string>フィルター</string>
-           </property>
-           <layout class="QGridLayout" name="gridLayout_2">
-            <item row="0" column="0">
-             <widget class="QStackedWidget" name="filter_stack">
-              <property name="currentIndex">
-               <number>0</number>
-              </property>
-              <widget class="QWidget" name="filter_input_page">
-               <layout class="QFormLayout" name="formLayout">
-                <property name="leftMargin">
-                 <number>0</number>
-                </property>
-                <property name="topMargin">
-                 <number>0</number>
-                </property>
-                <property name="rightMargin">
-                 <number>0</number>
-                </property>
-                <property name="bottomMargin">
-                 <number>0</number>
-                </property>
+               <property name="title">
+                <string>フィルター</string>
+               </property>
+               <layout class="QGridLayout" name="gridLayout">
                 <item row="0" column="0">
-                 <widget class="QLabel" name="label_keyword">
-                  <property name="text">
-                   <string>キーワード</string>
+                 <widget class="QStackedWidget" name="filter_stack">
+                  <property name="currentIndex">
+                   <number>0</number>
                   </property>
-                 </widget>
-                </item>
-                <item row="0" column="1">
-                 <widget class="QLineEdit" name="keyword_edit">
-                  <property name="text">
-                   <string/>
-                  </property>
-                 </widget>
-                </item>
-                <item row="1" column="0">
-                 <widget class="QLabel" name="label_fields">
-                  <property name="text">
-                   <string>検索フィールド</string>
-                  </property>
-                 </widget>
-                </item>
-                <item row="1" column="1">
-                 <widget class="QLineEdit" name="field_edit">
-                  <property name="text">
-                   <string>*</string>
-                  </property>
-                 </widget>
-                </item>
-                <item row="2" column="0">
-                 <widget class="QLabel" name="label_exclude">
-                  <property name="text">
-                   <string>除外キーワード</string>
-                  </property>
-                 </widget>
-                </item>
-                <item row="2" column="1">
-                 <widget class="QLineEdit" name="exclude_edit">
-                  <property name="placeholderText">
-                   <string>例: 室蘭,登別</string>
-                  </property>
-                 </widget>
-                </item>
-                <item row="3" column="0">
-                 <widget class="QLabel" name="label_condition">
-                  <property name="text">
-                   <string>条件</string>
-                  </property>
-                 </widget>
-                </item>
-                <item row="3" column="1">
-                 <widget class="QWidget" name="radio_widget" native="true">
-                  <layout class="QHBoxLayout" name="radio_row">
-                   <property name="leftMargin">
-                    <number>0</number>
-                   </property>
-                   <property name="topMargin">
-                    <number>0</number>
-                   </property>
-                   <property name="rightMargin">
-                    <number>0</number>
-                   </property>
-                   <property name="bottomMargin">
-                    <number>0</number>
-                   </property>
-                   <item>
-                    <widget class="QRadioButton" name="or_radio">
-                     <property name="text">
-                      <string>OR: どれか含む</string>
-                     </property>
-                     <property name="checked">
-                      <bool>true</bool>
-                     </property>
-                    </widget>
-                   </item>
-                   <item>
-                    <widget class="QRadioButton" name="and_radio">
-                     <property name="text">
-                      <string>AND: 全部含む</string>
-                     </property>
-                    </widget>
-                   </item>
-                  </layout>
-                 </widget>
-                </item>
-                <item row="4" column="0">
-                 <widget class="QLabel" name="label_option">
-                  <property name="text">
-                   <string>オプション</string>
-                  </property>
-                 </widget>
-                </item>
-                <item row="4" column="1">
-                 <widget class="QCheckBox" name="regex_check">
-                  <property name="text">
-                   <string>正規表現</string>
-                  </property>
+                  <widget class="QWidget" name="filter_input_page">
+                   <layout class="QFormLayout" name="formLayout">
+                    <property name="leftMargin">
+                     <number>0</number>
+                    </property>
+                    <property name="topMargin">
+                     <number>0</number>
+                    </property>
+                    <property name="rightMargin">
+                     <number>0</number>
+                    </property>
+                    <property name="bottomMargin">
+                     <number>0</number>
+                    </property>
+                    <item row="0" column="0">
+                     <widget class="QLabel" name="label_keyword">
+                      <property name="text">
+                       <string>キーワード</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="0" column="1">
+                     <widget class="QLineEdit" name="keyword_edit">
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="1" column="0">
+                     <widget class="QLabel" name="label_fields">
+                      <property name="text">
+                       <string>検索フィールド</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="1" column="1">
+                     <widget class="QLineEdit" name="field_edit">
+                      <property name="text">
+                       <string>*</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="2" column="0">
+                     <widget class="QLabel" name="label_exclude">
+                      <property name="text">
+                       <string>除外キーワード</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="2" column="1">
+                     <widget class="QLineEdit" name="exclude_edit">
+                      <property name="placeholderText">
+                       <string>例: 室蘭,登別</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="3" column="0">
+                     <widget class="QLabel" name="label_condition">
+                      <property name="text">
+                       <string>条件</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="3" column="1">
+                     <widget class="QWidget" name="radio_widget" native="true">
+                      <layout class="QHBoxLayout" name="radio_row">
+                       <property name="leftMargin">
+                        <number>0</number>
+                       </property>
+                       <property name="topMargin">
+                        <number>0</number>
+                       </property>
+                       <property name="rightMargin">
+                        <number>0</number>
+                       </property>
+                       <property name="bottomMargin">
+                        <number>0</number>
+                       </property>
+                       <item>
+                        <widget class="QRadioButton" name="or_radio">
+                         <property name="text">
+                          <string>OR: どれか含む</string>
+                         </property>
+                         <property name="checked">
+                          <bool>true</bool>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QRadioButton" name="and_radio">
+                         <property name="text">
+                          <string>AND: 全部含む</string>
+                         </property>
+                        </widget>
+                       </item>
+                      </layout>
+                     </widget>
+                    </item>
+                    <item row="4" column="0">
+                     <widget class="QLabel" name="label_option">
+                      <property name="text">
+                       <string>オプション</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="4" column="1">
+                     <widget class="QCheckBox" name="regex_check">
+                      <property name="text">
+                       <string>正規表現</string>
+                      </property>
+                     </widget>
+                    </item>
+                   </layout>
+                  </widget>
+                  <widget class="QWidget" name="osm_track_type_page">
+                   <layout class="QVBoxLayout" name="osm_track_type_layout">
+                    <property name="leftMargin">
+                     <number>0</number>
+                    </property>
+                    <property name="topMargin">
+                     <number>0</number>
+                    </property>
+                    <property name="rightMargin">
+                     <number>0</number>
+                    </property>
+                    <property name="bottomMargin">
+                     <number>0</number>
+                    </property>
+                    <item>
+                     <widget class="QCheckBox" name="railway_rail_check">
+                      <property name="text">
+                       <string>普通鉄道</string>
+                      </property>
+                      <property name="checked">
+                       <bool>true</bool>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QCheckBox" name="railway_subway_check">
+                      <property name="text">
+                       <string>地下鉄</string>
+                      </property>
+                      <property name="checked">
+                       <bool>true</bool>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QCheckBox" name="railway_tram_check">
+                      <property name="text">
+                       <string>路面電車</string>
+                      </property>
+                      <property name="checked">
+                       <bool>true</bool>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QCheckBox" name="railway_light_rail_check">
+                      <property name="text">
+                       <string>ライトレール</string>
+                      </property>
+                      <property name="checked">
+                       <bool>true</bool>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QCheckBox" name="railway_monorail_check">
+                      <property name="text">
+                       <string>モノレール</string>
+                      </property>
+                      <property name="checked">
+                       <bool>true</bool>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QCheckBox" name="railway_funicular_check">
+                      <property name="text">
+                       <string>ケーブルカー</string>
+                      </property>
+                      <property name="checked">
+                       <bool>true</bool>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QCheckBox" name="railway_abandoned_check">
+                      <property name="text">
+                       <string>廃線・休止線</string>
+                      </property>
+                      <property name="checked">
+                       <bool>true</bool>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <spacer name="verticalSpacer_osm">
+                      <property name="orientation">
+                       <enum>Qt::Orientation::Vertical</enum>
+                      </property>
+                      <property name="sizeHint" stdset="0">
+                       <size>
+                        <width>20</width>
+                        <height>40</height>
+                       </size>
+                      </property>
+                     </spacer>
+                    </item>
+                   </layout>
+                  </widget>
                  </widget>
                 </item>
                </layout>
-              </widget>
-              <widget class="QWidget" name="osm_track_type_page">
-               <layout class="QVBoxLayout" name="osm_track_type_layout">
-                <property name="leftMargin">
-                 <number>0</number>
-                </property>
-                <property name="topMargin">
-                 <number>0</number>
-                </property>
-                <property name="rightMargin">
-                 <number>0</number>
-                </property>
-                <property name="bottomMargin">
-                 <number>0</number>
-                </property>
-                <item>
-                 <widget class="QCheckBox" name="railway_rail_check">
-                  <property name="text">
-                   <string>普通鉄道</string>
-                  </property>
-                  <property name="checked">
-                   <bool>true</bool>
-                  </property>
-                 </widget>
-                </item>
-                <item>
-                 <widget class="QCheckBox" name="railway_subway_check">
-                  <property name="text">
-                   <string>地下鉄</string>
-                  </property>
-                  <property name="checked">
-                   <bool>true</bool>
-                  </property>
-                 </widget>
-                </item>
-                <item>
-                 <widget class="QCheckBox" name="railway_tram_check">
-                  <property name="text">
-                   <string>路面電車</string>
-                  </property>
-                  <property name="checked">
-                   <bool>true</bool>
-                  </property>
-                 </widget>
-                </item>
-                <item>
-                 <widget class="QCheckBox" name="railway_light_rail_check">
-                  <property name="text">
-                   <string>ライトレール</string>
-                  </property>
-                  <property name="checked">
-                   <bool>true</bool>
-                  </property>
-                 </widget>
-                </item>
-                <item>
-                 <widget class="QCheckBox" name="railway_monorail_check">
-                  <property name="text">
-                   <string>モノレール</string>
-                  </property>
-                  <property name="checked">
-                   <bool>true</bool>
-                  </property>
-                 </widget>
-                </item>
-                <item>
-                 <widget class="QCheckBox" name="railway_funicular_check">
-                  <property name="text">
-                   <string>ケーブルカー</string>
-                  </property>
-                  <property name="checked">
-                   <bool>true</bool>
-                  </property>
-                 </widget>
-                </item>
-                <item>
-                 <widget class="QCheckBox" name="railway_abandoned_check">
-                  <property name="text">
-                   <string>廃線・休止線</string>
-                  </property>
-                  <property name="checked">
-                   <bool>true</bool>
-                  </property>
-                 </widget>
-                </item>
-                <item>
-                 <spacer name="verticalSpacer_osm">
-                  <property name="orientation">
-                   <enum>Qt::Orientation::Vertical</enum>
-                  </property>
-                  <property name="sizeHint" stdset="0">
-                   <size>
-                    <width>20</width>
-                    <height>40</height>
-                   </size>
-                  </property>
-                 </spacer>
-                </item>
-               </layout>
-              </widget>
-             </widget>
-            </item>
-           </layout>
               </widget>
              </item>
             </layout>
@@ -361,226 +364,269 @@
              </property>
              <item>
               <widget class="QGroupBox" name="layer_group">
-           <property name="title">
-            <string>レイヤー</string>
-           </property>
-           <layout class="QVBoxLayout" name="layer_layout">
-            <property name="leftMargin">
-             <number>9</number>
-            </property>
-            <property name="topMargin">
-             <number>9</number>
-            </property>
-            <property name="rightMargin">
-             <number>9</number>
-            </property>
-            <property name="bottomMargin">
-             <number>9</number>
-            </property>
-            <item>
-             <layout class="QHBoxLayout" name="layer_btn_layout">
-              <item>
-               <widget class="QFrame" name="add_line_btn">
-                <property name="sizePolicy">
-                 <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-                  <horstretch>0</horstretch>
-                  <verstretch>0</verstretch>
-                 </sizepolicy>
+               <property name="title">
+                <string>レイヤー</string>
+               </property>
+               <layout class="QVBoxLayout" name="layer_layout">
+                <property name="leftMargin">
+                 <number>9</number>
                 </property>
-                <property name="styleSheet">
-                 <string notr="true">QFrame#add_line_btn { border: 1px solid palette(mid); border-radius: 4px; background-color: palette(button); } QFrame#add_line_btn QToolButton { background: transparent; border: none; border-radius: 4px; } QFrame#add_line_btn #left_add_line_btn { border-top-right-radius: 0px; border-bottom-right-radius: 0px; } QFrame#add_line_btn #registered_line_btn { border-top-left-radius: 0px; border-bottom-left-radius: 0px; } QFrame#add_line_btn QToolButton:hover { background-color: palette(midlight); }</string>
+                <property name="topMargin">
+                 <number>9</number>
                 </property>
-                <property name="frameShape">
-                 <enum>QFrame::Shape::StyledPanel</enum>
+                <property name="rightMargin">
+                 <number>9</number>
                 </property>
-                <property name="frameShadow">
-                 <enum>QFrame::Shadow::Raised</enum>
+                <property name="bottomMargin">
+                 <number>9</number>
                 </property>
-                <layout class="QHBoxLayout" name="horizontalLayout_2">
-                 <property name="spacing">
-                  <number>0</number>
-                 </property>
-                 <property name="leftMargin">
-                  <number>0</number>
-                 </property>
-                 <property name="topMargin">
-                  <number>0</number>
-                 </property>
-                 <property name="rightMargin">
-                  <number>0</number>
-                 </property>
-                 <property name="bottomMargin">
-                  <number>0</number>
-                 </property>
-                 <item>
-                  <widget class="QToolButton" name="left_add_line_btn">
-                   <property name="text">
-                    <string>線のデータ追加の方</string>
-                   </property>
-                  </widget>
-                 </item>
-                 <item>
-                  <widget class="QToolButton" name="registered_line_btn">
-                   <property name="text">
-                    <string/>
-                   </property>
-                  </widget>
-                 </item>
-                </layout>
-               </widget>
-              </item>
-              <item>
-               <widget class="QFrame" name="add_map_btn">
-                <property name="sizePolicy">
-                 <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-                  <horstretch>0</horstretch>
-                  <verstretch>0</verstretch>
-                 </sizepolicy>
-                </property>
-                <property name="styleSheet">
-                 <string notr="true">QFrame#add_map_btn { border: 1px solid palette(mid); border-radius: 4px; background-color: palette(button); } QFrame#add_map_btn QToolButton { background: transparent; border: none; border-radius: 4px; } QFrame#add_map_btn #left_add_map_btn { border-top-right-radius: 0px; border-bottom-right-radius: 0px; } QFrame#add_map_btn #registered_map_btn { border-top-left-radius: 0px; border-bottom-left-radius: 0px; } QFrame#add_map_btn QToolButton:hover { background-color: palette(midlight); }</string>
-                </property>
-                <property name="frameShape">
-                 <enum>QFrame::Shape::StyledPanel</enum>
-                </property>
-                <property name="frameShadow">
-                 <enum>QFrame::Shadow::Raised</enum>
-                </property>
-                <layout class="QHBoxLayout" name="horizontalLayout_3">
-                 <property name="spacing">
-                  <number>0</number>
-                 </property>
-                 <property name="leftMargin">
-                  <number>0</number>
-                 </property>
-                 <property name="topMargin">
-                  <number>0</number>
-                 </property>
-                 <property name="rightMargin">
-                  <number>0</number>
-                 </property>
-                 <property name="bottomMargin">
-                  <number>0</number>
-                 </property>
-                 <item>
-                  <widget class="QToolButton" name="left_add_map_btn">
-                   <property name="text">
-                    <string>背景地図を追加の方</string>
-                   </property>
-                  </widget>
-                 </item>
-                 <item>
-                  <widget class="QToolButton" name="registered_map_btn">
-                   <property name="text">
-                    <string/>
-                   </property>
-                  </widget>
-                 </item>
-                </layout>
-               </widget>
-              </item>
-              <item>
-               <widget class="QToolButton" name="draw_line_btn">
-                <property name="text">
-                 <string>線を描画</string>
-                </property>
-                <property name="checkable">
-                 <bool>true</bool>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <layout class="QHBoxLayout" name="draw_struct_layout">
                 <item>
-                 <widget class="QToolButton" name="draw_struct_tunnel_btn">
-                  <property name="text">
-                   <string>トンネル</string>
+                 <layout class="QHBoxLayout" name="layer_btn_layout">
+                  <item>
+                   <widget class="QFrame" name="add_line_btn">
+                    <property name="sizePolicy">
+                     <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                      <horstretch>0</horstretch>
+                      <verstretch>0</verstretch>
+                     </sizepolicy>
+                    </property>
+                    <property name="styleSheet">
+                     <string notr="true">QFrame#add_line_btn { border: 1px solid palette(mid); border-radius: 4px; background-color: palette(button); } QFrame#add_line_btn QToolButton { background: transparent; border: none; border-radius: 4px; } QFrame#add_line_btn #left_add_line_btn { border-top-right-radius: 0px; border-bottom-right-radius: 0px; } QFrame#add_line_btn #registered_line_btn { border-top-left-radius: 0px; border-bottom-left-radius: 0px; } QFrame#add_line_btn QToolButton:hover { background-color: palette(midlight); }</string>
+                    </property>
+                    <property name="frameShape">
+                     <enum>QFrame::Shape::StyledPanel</enum>
+                    </property>
+                    <property name="frameShadow">
+                     <enum>QFrame::Shadow::Raised</enum>
+                    </property>
+                    <layout class="QHBoxLayout" name="horizontalLayout_2">
+                     <property name="spacing">
+                      <number>0</number>
+                     </property>
+                     <property name="leftMargin">
+                      <number>0</number>
+                     </property>
+                     <property name="topMargin">
+                      <number>0</number>
+                     </property>
+                     <property name="rightMargin">
+                      <number>0</number>
+                     </property>
+                     <property name="bottomMargin">
+                      <number>0</number>
+                     </property>
+                     <item>
+                      <widget class="QToolButton" name="left_add_line_btn">
+                       <property name="text">
+                        <string>線のデータ追加の方</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QToolButton" name="registered_line_btn">
+                       <property name="text">
+                        <string/>
+                       </property>
+                      </widget>
+                     </item>
+                    </layout>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QFrame" name="add_map_btn">
+                    <property name="sizePolicy">
+                     <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                      <horstretch>0</horstretch>
+                      <verstretch>0</verstretch>
+                     </sizepolicy>
+                    </property>
+                    <property name="styleSheet">
+                     <string notr="true">QFrame#add_map_btn { border: 1px solid palette(mid); border-radius: 4px; background-color: palette(button); } QFrame#add_map_btn QToolButton { background: transparent; border: none; border-radius: 4px; } QFrame#add_map_btn #left_add_map_btn { border-top-right-radius: 0px; border-bottom-right-radius: 0px; } QFrame#add_map_btn #registered_map_btn { border-top-left-radius: 0px; border-bottom-left-radius: 0px; } QFrame#add_map_btn QToolButton:hover { background-color: palette(midlight); }</string>
+                    </property>
+                    <property name="frameShape">
+                     <enum>QFrame::Shape::StyledPanel</enum>
+                    </property>
+                    <property name="frameShadow">
+                     <enum>QFrame::Shadow::Raised</enum>
+                    </property>
+                    <layout class="QHBoxLayout" name="horizontalLayout_3">
+                     <property name="spacing">
+                      <number>0</number>
+                     </property>
+                     <property name="leftMargin">
+                      <number>0</number>
+                     </property>
+                     <property name="topMargin">
+                      <number>0</number>
+                     </property>
+                     <property name="rightMargin">
+                      <number>0</number>
+                     </property>
+                     <property name="bottomMargin">
+                      <number>0</number>
+                     </property>
+                     <item>
+                      <widget class="QToolButton" name="left_add_map_btn">
+                       <property name="text">
+                        <string>背景地図を追加の方</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QToolButton" name="registered_map_btn">
+                       <property name="text">
+                        <string/>
+                       </property>
+                      </widget>
+                     </item>
+                    </layout>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QToolButton" name="draw_line_btn">
+                    <property name="text">
+                     <string>線を描画</string>
+                    </property>
+                    <property name="checkable">
+                     <bool>true</bool>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <layout class="QHBoxLayout" name="draw_struct_layout">
+                    <item>
+                     <widget class="QToolButton" name="draw_struct_tunnel_btn">
+                      <property name="text">
+                       <string>トンネル</string>
+                      </property>
+                      <property name="checkable">
+                       <bool>true</bool>
+                      </property>
+                      <attribute name="buttonGroup">
+                       <string notr="true">draw_struct_group</string>
+                      </attribute>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QToolButton" name="draw_struct_ground_btn">
+                      <property name="text">
+                       <string>地上</string>
+                      </property>
+                      <property name="checkable">
+                       <bool>true</bool>
+                      </property>
+                      <property name="checked">
+                       <bool>true</bool>
+                      </property>
+                      <attribute name="buttonGroup">
+                       <string notr="true">draw_struct_group</string>
+                      </attribute>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QToolButton" name="draw_struct_bridge_btn">
+                      <property name="text">
+                       <string>高架</string>
+                      </property>
+                      <property name="checkable">
+                       <bool>true</bool>
+                      </property>
+                      <attribute name="buttonGroup">
+                       <string notr="true">draw_struct_group</string>
+                      </attribute>
+                     </widget>
+                    </item>
+                   </layout>
+                  </item>
+                  <item>
+                   <widget class="QToolButton" name="add_history_btn">
+                    <property name="text">
+                     <string>履歴</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QToolButton" name="remove_layer_btn">
+                    <property name="text">
+                     <string>削除</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QToolButton" name="edit_layer_btn">
+                    <property name="text">
+                     <string>レイヤー編集</string>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </item>
+                <item>
+                 <widget class="QListWidget" name="layer_list">
+                  <property name="minimumSize">
+                   <size>
+                    <width>0</width>
+                    <height>150</height>
+                   </size>
                   </property>
-                  <property name="checkable">
+                  <property name="acceptDrops">
                    <bool>true</bool>
                   </property>
-                  <attribute name="buttonGroup">
-                   <string notr="true">draw_struct_group</string>
-                  </attribute>
+                  <property name="dragEnabled">
+                   <bool>true</bool>
+                  </property>
+                  <property name="dragDropMode">
+                   <enum>QAbstractItemView::DragDropMode::InternalMove</enum>
+                  </property>
+                  <property name="defaultDropAction">
+                   <enum>Qt::DropAction::MoveAction</enum>
+                  </property>
                  </widget>
                 </item>
                 <item>
-                 <widget class="QToolButton" name="draw_struct_ground_btn">
-                  <property name="text">
-                   <string>地上</string>
-                  </property>
-                  <property name="checkable">
-                   <bool>true</bool>
-                  </property>
-                  <property name="checked">
-                   <bool>true</bool>
-                  </property>
-                  <attribute name="buttonGroup">
-                   <string notr="true">draw_struct_group</string>
-                  </attribute>
-                 </widget>
-                </item>
-                <item>
-                 <widget class="QToolButton" name="draw_struct_bridge_btn">
-                  <property name="text">
-                   <string>高架</string>
-                  </property>
-                  <property name="checkable">
-                   <bool>true</bool>
-                  </property>
-                  <attribute name="buttonGroup">
-                   <string notr="true">draw_struct_group</string>
-                  </attribute>
-                 </widget>
+                 <layout class="QHBoxLayout" name="opacity_layout">
+                  <item>
+                   <widget class="QLabel" name="label_opacity">
+                    <property name="text">
+                     <string>不透明度</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QSlider" name="opacity_slider">
+                    <property name="minimum">
+                     <number>0</number>
+                    </property>
+                    <property name="maximum">
+                     <number>100</number>
+                    </property>
+                    <property name="value">
+                     <number>100</number>
+                    </property>
+                    <property name="orientation">
+                     <enum>Qt::Orientation::Horizontal</enum>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="opacity_val_label">
+                    <property name="minimumSize">
+                     <size>
+                      <width>35</width>
+                      <height>0</height>
+                     </size>
+                    </property>
+                    <property name="text">
+                     <string>100%</string>
+                    </property>
+                    <property name="alignment">
+                     <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter</set>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
                 </item>
                </layout>
-              </item>
-              <item>
-               <widget class="QToolButton" name="add_history_btn">
-                <property name="text">
-                 <string>履歴</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QToolButton" name="remove_layer_btn">
-                <property name="text">
-                 <string>削除</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QToolButton" name="edit_layer_btn">
-                <property name="text">
-                 <string>レイヤー編集</string>
-                </property>
-               </widget>
-              </item>
-             </layout>
-            </item>
-            <item>
-             <widget class="QListWidget" name="layer_list">
-              <property name="minimumSize">
-               <size>
-                <width>0</width>
-                <height>150</height>
-               </size>
-              </property>
-              <property name="dragEnabled">
-               <bool>true</bool>
-              </property>
-              <property name="acceptDrops">
-               <bool>true</bool>
-              </property>
-              <property name="dragDropMode">
-               <enum>QAbstractItemView::DragDropMode::InternalMove</enum>
-              </property>
-              <property name="defaultDropAction">
-               <enum>Qt::DropAction::MoveAction</enum>
-              </property>
-             </widget>
-            </item>
-           </layout>
               </widget>
              </item>
             </layout>
@@ -604,258 +650,258 @@
              </property>
              <item>
               <widget class="QGroupBox" name="export_group">
-           <property name="title">
-            <string>書き出し設定</string>
-           </property>
-           <layout class="QFormLayout" name="formLayout_export">
-            <item row="0" column="0">
-             <widget class="QLabel" name="label_bbox_min">
-              <property name="text">
-               <string>最小 経度/緯度</string>
-              </property>
-             </widget>
-            </item>
-            <item row="0" column="1">
-             <widget class="QWidget" name="bbox_min_widget" native="true">
-              <layout class="QHBoxLayout" name="bbox_min_layout">
-               <property name="leftMargin">
-                <number>0</number>
+               <property name="title">
+                <string>書き出し設定</string>
                </property>
-               <property name="topMargin">
-                <number>0</number>
-               </property>
-               <property name="rightMargin">
-                <number>0</number>
-               </property>
-               <property name="bottomMargin">
-                <number>0</number>
-               </property>
-               <item>
-                <widget class="QLineEdit" name="min_lon_edit">
-                 <property name="placeholderText">
-                  <string>最小経度</string>
-                 </property>
-                </widget>
-               </item>
-               <item>
-                <widget class="QLineEdit" name="min_lat_edit">
-                 <property name="placeholderText">
-                  <string>最小緯度</string>
-                 </property>
-                </widget>
-               </item>
-              </layout>
-             </widget>
-            </item>
-            <item row="1" column="0">
-             <widget class="QLabel" name="label_bbox_max">
-              <property name="text">
-               <string>最大 経度/緯度</string>
-              </property>
-             </widget>
-            </item>
-            <item row="1" column="1">
-             <widget class="QWidget" name="bbox_max_widget" native="true">
-              <layout class="QHBoxLayout" name="bbox_max_layout">
-               <property name="leftMargin">
-                <number>0</number>
-               </property>
-               <property name="topMargin">
-                <number>0</number>
-               </property>
-               <property name="rightMargin">
-                <number>0</number>
-               </property>
-               <property name="bottomMargin">
-                <number>0</number>
-               </property>
-               <item>
-                <widget class="QLineEdit" name="max_lon_edit">
-                 <property name="placeholderText">
-                  <string>最大経度</string>
-                 </property>
-                </widget>
-               </item>
-               <item>
-                <widget class="QLineEdit" name="max_lat_edit">
-                 <property name="placeholderText">
-                  <string>最大緯度</string>
-                 </property>
-                </widget>
-               </item>
-              </layout>
-             </widget>
-            </item>
-            <item row="2" column="1">
-             <widget class="QPushButton" name="clear_bbox_btn">
-              <property name="text">
-               <string>範囲クリア</string>
-              </property>
-             </widget>
-            </item>
-            <item row="3" column="0">
-             <widget class="QLabel" name="label_scale">
-              <property name="text">
-               <string>出力倍率 X / Y</string>
-              </property>
-             </widget>
-            </item>
-            <item row="3" column="1">
-             <widget class="QWidget" name="scale_widget" native="true">
-              <layout class="QHBoxLayout" name="scale_layout">
-               <property name="leftMargin">
-                <number>0</number>
-               </property>
-               <property name="topMargin">
-                <number>0</number>
-               </property>
-               <property name="rightMargin">
-                <number>0</number>
-               </property>
-               <property name="bottomMargin">
-                <number>0</number>
-               </property>
-               <item>
-                <widget class="QDoubleSpinBox" name="scale_x_spin">
-                 <property name="decimals">
-                  <number>4</number>
-                 </property>
-                 <property name="minimum">
-                  <double>0.100000000000000</double>
-                 </property>
-                 <property name="maximum">
-                  <double>2.000000000000000</double>
-                 </property>
-                 <property name="singleStep">
-                  <double>0.000100000000000</double>
-                 </property>
-                 <property name="value">
-                  <double>1.000000000000000</double>
-                 </property>
-                </widget>
-               </item>
-               <item>
-                <widget class="QDoubleSpinBox" name="scale_y_spin">
-                 <property name="decimals">
-                  <number>4</number>
-                 </property>
-                 <property name="minimum">
-                  <double>0.100000000000000</double>
-                 </property>
-                 <property name="maximum">
-                  <double>2.000000000000000</double>
-                 </property>
-                 <property name="singleStep">
-                  <double>0.000100000000000</double>
-                 </property>
-                 <property name="value">
-                  <double>1.000000000000000</double>
-                 </property>
-                </widget>
-               </item>
-              </layout>
-             </widget>
-            </item>
-            <item row="4" column="0">
-             <widget class="QLabel" name="label_spline_tolerance">
-              <property name="text">
-               <string>近似許容誤差 (m)</string>
-              </property>
-             </widget>
-            </item>
-            <item row="4" column="1">
-             <widget class="QDoubleSpinBox" name="spline_tolerance_spin">
-              <property name="decimals">
-               <number>1</number>
-              </property>
-              <property name="minimum">
-               <double>0.100000000000000</double>
-              </property>
-              <property name="maximum">
-               <double>100.000000000000000</double>
-              </property>
-              <property name="singleStep">
-               <double>0.500000000000000</double>
-              </property>
-              <property name="value">
-               <double>5.000000000000000</double>
-              </property>
-             </widget>
-            </item>
-            <item row="5" column="0">
-             <widget class="QLabel" name="label_junction_spacing">
-              <property name="text">
-               <string>分岐点保護範囲 (m)</string>
-              </property>
-             </widget>
-            </item>
-            <item row="5" column="1">
-             <widget class="QDoubleSpinBox" name="junction_spacing_spin">
-              <property name="decimals">
-               <number>1</number>
-              </property>
-              <property name="minimum">
-               <double>0.000000000000000</double>
-              </property>
-              <property name="maximum">
-               <double>500.000000000000000</double>
-              </property>
-              <property name="singleStep">
-               <double>5.000000000000000</double>
-              </property>
-              <property name="value">
-               <double>30.000000000000000</double>
-              </property>
-             </widget>
-            </item>
-            <item row="6" column="0">
-             <widget class="QLabel" name="label_max_spacing">
-              <property name="text">
-               <string>分割の最大間隔 (m)</string>
-              </property>
-             </widget>
-            </item>
-            <item row="6" column="1">
-             <widget class="QDoubleSpinBox" name="max_spacing_spin">
-              <property name="decimals">
-               <number>1</number>
-              </property>
-              <property name="minimum">
-               <double>10.000000000000000</double>
-              </property>
-              <property name="maximum">
-               <double>2000.000000000000000</double>
-              </property>
-              <property name="singleStep">
-               <double>10.000000000000000</double>
-              </property>
-              <property name="value">
-               <double>200.000000000000000</double>
-              </property>
-             </widget>
-            </item>
-            <item row="7" column="0">
-             <widget class="QLabel" name="label_track_mode">
-              <property name="text">
-               <string>Track mode</string>
-              </property>
-             </widget>
-            </item>
-            <item row="7" column="1">
-             <widget class="QComboBox" name="track_mode_combo">
-              <item>
-               <property name="text">
-                <string>Point</string>
-               </property>
-              </item>
-              <item>
-               <property name="text">
-                <string>Tangent</string>
-               </property>
-              </item>
-             </widget>
-            </item>
-           </layout>
+               <layout class="QFormLayout" name="formLayout_export">
+                <item row="0" column="0">
+                 <widget class="QLabel" name="label_bbox_min">
+                  <property name="text">
+                   <string>最小 経度/緯度</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="0" column="1">
+                 <widget class="QWidget" name="bbox_min_widget" native="true">
+                  <layout class="QHBoxLayout" name="bbox_min_layout">
+                   <property name="leftMargin">
+                    <number>0</number>
+                   </property>
+                   <property name="topMargin">
+                    <number>0</number>
+                   </property>
+                   <property name="rightMargin">
+                    <number>0</number>
+                   </property>
+                   <property name="bottomMargin">
+                    <number>0</number>
+                   </property>
+                   <item>
+                    <widget class="QLineEdit" name="min_lon_edit">
+                     <property name="placeholderText">
+                      <string>最小経度</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QLineEdit" name="min_lat_edit">
+                     <property name="placeholderText">
+                      <string>最小緯度</string>
+                     </property>
+                    </widget>
+                   </item>
+                  </layout>
+                 </widget>
+                </item>
+                <item row="1" column="0">
+                 <widget class="QLabel" name="label_bbox_max">
+                  <property name="text">
+                   <string>最大 経度/緯度</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="1">
+                 <widget class="QWidget" name="bbox_max_widget" native="true">
+                  <layout class="QHBoxLayout" name="bbox_max_layout">
+                   <property name="leftMargin">
+                    <number>0</number>
+                   </property>
+                   <property name="topMargin">
+                    <number>0</number>
+                   </property>
+                   <property name="rightMargin">
+                    <number>0</number>
+                   </property>
+                   <property name="bottomMargin">
+                    <number>0</number>
+                   </property>
+                   <item>
+                    <widget class="QLineEdit" name="max_lon_edit">
+                     <property name="placeholderText">
+                      <string>最大経度</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QLineEdit" name="max_lat_edit">
+                     <property name="placeholderText">
+                      <string>最大緯度</string>
+                     </property>
+                    </widget>
+                   </item>
+                  </layout>
+                 </widget>
+                </item>
+                <item row="2" column="1">
+                 <widget class="QPushButton" name="clear_bbox_btn">
+                  <property name="text">
+                   <string>範囲クリア</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="3" column="0">
+                 <widget class="QLabel" name="label_scale">
+                  <property name="text">
+                   <string>出力倍率 X / Y</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="3" column="1">
+                 <widget class="QWidget" name="scale_widget" native="true">
+                  <layout class="QHBoxLayout" name="scale_layout">
+                   <property name="leftMargin">
+                    <number>0</number>
+                   </property>
+                   <property name="topMargin">
+                    <number>0</number>
+                   </property>
+                   <property name="rightMargin">
+                    <number>0</number>
+                   </property>
+                   <property name="bottomMargin">
+                    <number>0</number>
+                   </property>
+                   <item>
+                    <widget class="QDoubleSpinBox" name="scale_x_spin">
+                     <property name="decimals">
+                      <number>4</number>
+                     </property>
+                     <property name="minimum">
+                      <double>0.100000000000000</double>
+                     </property>
+                     <property name="maximum">
+                      <double>2.000000000000000</double>
+                     </property>
+                     <property name="singleStep">
+                      <double>0.000100000000000</double>
+                     </property>
+                     <property name="value">
+                      <double>1.000000000000000</double>
+                     </property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QDoubleSpinBox" name="scale_y_spin">
+                     <property name="decimals">
+                      <number>4</number>
+                     </property>
+                     <property name="minimum">
+                      <double>0.100000000000000</double>
+                     </property>
+                     <property name="maximum">
+                      <double>2.000000000000000</double>
+                     </property>
+                     <property name="singleStep">
+                      <double>0.000100000000000</double>
+                     </property>
+                     <property name="value">
+                      <double>1.000000000000000</double>
+                     </property>
+                    </widget>
+                   </item>
+                  </layout>
+                 </widget>
+                </item>
+                <item row="4" column="0">
+                 <widget class="QLabel" name="label_spline_tolerance">
+                  <property name="text">
+                   <string>近似許容誤差 (m)</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="4" column="1">
+                 <widget class="QDoubleSpinBox" name="spline_tolerance_spin">
+                  <property name="decimals">
+                   <number>1</number>
+                  </property>
+                  <property name="minimum">
+                   <double>0.100000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>100.000000000000000</double>
+                  </property>
+                  <property name="singleStep">
+                   <double>0.500000000000000</double>
+                  </property>
+                  <property name="value">
+                   <double>5.000000000000000</double>
+                  </property>
+                 </widget>
+                </item>
+                <item row="5" column="0">
+                 <widget class="QLabel" name="label_junction_spacing">
+                  <property name="text">
+                   <string>分岐点保護範囲 (m)</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="5" column="1">
+                 <widget class="QDoubleSpinBox" name="junction_spacing_spin">
+                  <property name="decimals">
+                   <number>1</number>
+                  </property>
+                  <property name="minimum">
+                   <double>0.000000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>500.000000000000000</double>
+                  </property>
+                  <property name="singleStep">
+                   <double>5.000000000000000</double>
+                  </property>
+                  <property name="value">
+                   <double>30.000000000000000</double>
+                  </property>
+                 </widget>
+                </item>
+                <item row="6" column="0">
+                 <widget class="QLabel" name="label_max_spacing">
+                  <property name="text">
+                   <string>分割の最大間隔 (m)</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="6" column="1">
+                 <widget class="QDoubleSpinBox" name="max_spacing_spin">
+                  <property name="decimals">
+                   <number>1</number>
+                  </property>
+                  <property name="minimum">
+                   <double>10.000000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>2000.000000000000000</double>
+                  </property>
+                  <property name="singleStep">
+                   <double>10.000000000000000</double>
+                  </property>
+                  <property name="value">
+                   <double>200.000000000000000</double>
+                  </property>
+                 </widget>
+                </item>
+                <item row="7" column="0">
+                 <widget class="QLabel" name="label_track_mode">
+                  <property name="text">
+                   <string>Track mode</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="7" column="1">
+                 <widget class="QComboBox" name="track_mode_combo">
+                  <item>
+                   <property name="text">
+                    <string>Point</string>
+                   </property>
+                  </item>
+                  <item>
+                   <property name="text">
+                    <string>Tangent</string>
+                   </property>
+                  </item>
+                 </widget>
+                </item>
+               </layout>
               </widget>
              </item>
             </layout>
