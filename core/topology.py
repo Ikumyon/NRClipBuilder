@@ -192,12 +192,85 @@ def enforce_max_spacing(
             keep[i] = True
             last_kept = i
 
+def compute_circumradius(p1: tuple[float, float], p2: tuple[float, float], p3: tuple[float, float]) -> tuple[float, int]:
+    """Compute circumradius R and turn direction (-1 for right, 1 for left, 0 for straight) for 3 points."""
+    x1, y1 = p1
+    x2, y2 = p2
+    x3, y3 = p3
+
+    dx1, dy1 = x2 - x1, y2 - y1
+    dx2, dy2 = x3 - x2, y3 - y2
+
+    cross = dx1 * dy2 - dy1 * dx2
+    if abs(cross) < 1e-7:
+        return float('inf'), 0
+
+    a = math.hypot(dx1, dy1)
+    b = math.hypot(dx2, dy2)
+    c = math.hypot(x3 - x1, y3 - y1)
+
+    if a < 1e-5 or b < 1e-5 or c < 1e-5:
+        return float('inf'), 0
+
+    radius = (a * b * c) / (2.0 * abs(cross))
+    direction = 1 if cross > 0 else -1
+    return radius, direction
+
+def merge_constant_radius_arcs(
+    coords: list[tuple[float, float]],
+    keep: list[bool],
+    suppress_split: list[bool],
+    r_tolerance_pct: float = 5.0,
+    enable_merging: bool = True
+) -> None:
+    if not enable_merging or len(coords) < 4:
+        return
+
+    n = len(coords)
+    radii = [float('inf')] * n
+    directions = [0] * n
+
+    for i in range(1, n - 1):
+        r, d = compute_circumradius(coords[i - 1], coords[i], coords[i + 1])
+        radii[i] = r
+        directions[i] = d
+
+    tol = max(r_tolerance_pct / 100.0, 0.001)
+    i = 1
+    while i < n - 1:
+        if directions[i] == 0 or radii[i] > 10000.0:
+            i += 1
+            continue
+
+        start = i
+        r_base = radii[i]
+        d_base = directions[i]
+        end = i
+
+        while end + 1 < n - 1:
+            next_r = radii[end + 1]
+            next_d = directions[end + 1]
+            if next_d != d_base or next_r > 10000.0:
+                break
+            if abs(next_r - r_base) / r_base > tol:
+                break
+            end += 1
+            r_base = (r_base * (end - start) + next_r) / (end - start + 1)
+
+        if end > start:
+            for k in range(start, end + 1):
+                if not keep[k]:
+                    suppress_split[k] = True
+        i = end + 1
+
 def _simplify_turnout_routes(
     route_data: dict[str, Any],
     osm: dict[str, Any],
     spline_tolerance: float,
     junction_spacing: float,
     max_spacing: float,
+    curve_r_tolerance: float = 5.0,
+    enable_curve_r_merging: bool = True,
 ) -> list[list[tuple[int | None, float, float]]]:
     simplified_routes: list[list[tuple[int | None, float, float]]] = []
     junction_nodes: set[int] = route_data['junction_nodes']
@@ -210,6 +283,7 @@ def _simplify_turnout_routes(
         keep = [False] * len(coords)
         keep[0] = True
         keep[-1] = True
+        suppress_split = [False] * len(coords)
 
         for i, node_id in enumerate(route):
             if node_id in junction_nodes:
@@ -228,15 +302,26 @@ def _simplify_turnout_routes(
                 keep[i] = True
 
         keep_near_junction_endpoints(route, coords, junction_nodes, keep, junction_spacing)
+        merge_constant_radius_arcs(coords, keep, suppress_split, curve_r_tolerance, enable_curve_r_merging)
+        spline_simplify(coords, keep, spline_tolerance, suppress_split, max_spacing)
         enforce_max_spacing(coords, keep, max_spacing)
-        spline_simplify(coords, keep, spline_tolerance)
 
         kept_indices = [i for i, should_keep in enumerate(keep) if should_keep]
         simplified_routes.append([(i, coords[i][0], coords[i][1]) for i in kept_indices])
 
     return simplified_routes
 
-def spline_simplify(coords: list[tuple[float, float]], keep: list[bool], spline_tolerance: float) -> None:
+def spline_simplify(
+    coords: list[tuple[float, float]],
+    keep: list[bool],
+    spline_tolerance: float,
+    suppress_split: list[bool] | None = None,
+    max_spacing: float = 0.0,
+) -> None:
+    """Add spline points without subdividing spans below ``max_spacing``."""
+    if suppress_split is None:
+        suppress_split = [False] * len(coords)
+
     for _ in range(20):
         kept_pts = [coords[i] for i in range(len(coords)) if keep[i]]
         kept_idx = [i for i in range(len(coords)) if keep[i]]
@@ -253,9 +338,17 @@ def spline_simplify(coords: list[tuple[float, float]], keep: list[bool], spline_
             if orig_end - orig_start <= 1:
                 continue
 
+            span_dx = coords[orig_end][0] - coords[orig_start][0]
+            span_dy = coords[orig_end][1] - coords[orig_start][1]
+            span_distance = math.hypot(span_dx, span_dy)
+            if max_spacing > 0.0 and span_distance <= max_spacing:
+                continue
+
             worst_dev = 0.0
             worst_orig = orig_start
             for oi in range(orig_start + 1, orig_end):
+                if suppress_split[oi]:
+                    continue
                 ox, oy = coords[oi]
                 best_d = float("inf")
                 for s in range(33):
@@ -268,7 +361,7 @@ def spline_simplify(coords: list[tuple[float, float]], keep: list[bool], spline_
                     worst_dev = best_d
                     worst_orig = oi
 
-            if worst_dev > spline_tolerance:
+            if worst_dev > spline_tolerance and worst_orig != orig_start:
                 keep[worst_orig] = True
                 added = True
 

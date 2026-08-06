@@ -26,6 +26,8 @@ def geojson_to_nrclip_bytes(
     junction_spacing: float = 30.0,
     max_spacing: float = 2000.0,
     tangent_mode: bool = False,
+    curve_r_tolerance: float = 5.0,
+    enable_curve_r_merging: bool = True,
 ) -> bytes:
     """Convert GeoJSON features to .nrclip using Turnout route topology."""
     osm = _build_turnout_input(features)
@@ -38,6 +40,8 @@ def geojson_to_nrclip_bytes(
         spline_tolerance,
         junction_spacing,
         max_spacing,
+        curve_r_tolerance,
+        enable_curve_r_merging,
     )
     simplified = _subdivide_long_segments(simplified, route_data['route_coords'], max_spacing)
     track_nodes = _build_track_nodes(simplified, route_data, osm, tangent_mode)

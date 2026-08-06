@@ -880,28 +880,71 @@
                   </property>
                  </widget>
                 </item>
-                <item row="7" column="0">
-                 <widget class="QLabel" name="label_track_mode">
-                  <property name="text">
-                   <string>Track mode</string>
-                  </property>
-                 </widget>
-                </item>
-                <item row="7" column="1">
-                 <widget class="QComboBox" name="track_mode_combo">
-                  <item>
+                 <item row="7" column="0">
+                  <widget class="QLabel" name="label_track_mode">
                    <property name="text">
-                    <string>Point</string>
+                    <string>Track mode</string>
                    </property>
-                  </item>
-                  <item>
+                  </widget>
+                 </item>
+                 <item row="7" column="1">
+                  <widget class="QComboBox" name="track_mode_combo">
+                   <item>
+                    <property name="text">
+                     <string>Point</string>
+                    </property>
+                   </item>
+                   <item>
+                    <property name="text">
+                     <string>Tangent</string>
+                    </property>
+                   </item>
+                  </widget>
+                 </item>
+                 <item row="8" column="0">
+                  <widget class="QLabel" name="label_curve_r_tolerance">
                    <property name="text">
-                    <string>Tangent</string>
+                    <string>カーブR許容誤差 (%)</string>
                    </property>
-                  </item>
-                 </widget>
-                </item>
-               </layout>
+                  </widget>
+                 </item>
+                 <item row="8" column="1">
+                  <widget class="QDoubleSpinBox" name="curve_r_tolerance_spin">
+                   <property name="decimals">
+                    <number>1</number>
+                   </property>
+                   <property name="minimum">
+                    <double>0.000000000000000</double>
+                   </property>
+                   <property name="maximum">
+                    <double>50.000000000000000</double>
+                   </property>
+                   <property name="singleStep">
+                    <double>0.500000000000000</double>
+                   </property>
+                   <property name="value">
+                    <double>5.000000000000000</double>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="9" column="0">
+                  <widget class="QLabel" name="label_enable_curve_r_merging">
+                   <property name="text">
+                    <string>同一Rカーブ統合</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="9" column="1">
+                  <widget class="QCheckBox" name="enable_curve_r_merging_check">
+                   <property name="text">
+                    <string>同一Rを同一セグメントに統合</string>
+                   </property>
+                   <property name="checked">
+                    <bool>true</bool>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
               </widget>
              </item>
             </layout>

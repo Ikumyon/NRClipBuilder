@@ -1868,12 +1868,16 @@ class MainWindow(QMainWindow):
             junction_spacing = self.junction_spacing_spin.value()
             max_spacing = self.max_spacing_spin.value()
             tangent_mode = (self.track_mode_combo.currentData() == "tangent")
+            curve_r_tolerance = self.curve_r_tolerance_spin.value()
+            enable_curve_r_merging = self.enable_curve_r_merging_check.isChecked()
             data = geojson_to_nrclip_bytes(
                 line_features, name, scale_x, scale_y,
                 spline_tolerance=spline_tolerance,
                 junction_spacing=junction_spacing,
                 max_spacing=max_spacing,
-                tangent_mode=tangent_mode
+                tangent_mode=tangent_mode,
+                curve_r_tolerance=curve_r_tolerance,
+                enable_curve_r_merging=enable_curve_r_merging,
             )
             path.write_bytes(data)
             self.last_output_dir = path.parent
