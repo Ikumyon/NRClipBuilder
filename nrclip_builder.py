@@ -1757,12 +1757,21 @@ class MainWindow(QMainWindow):
                 self.table.setItem(r, c, item)
         self.table.resizeColumnsToContents()
 
+    def get_selected_layer_features(self, name: str) -> list[dict[str, Any]]:
+        if name in self.layers_filtered:
+            return self.layers_filtered[name]
+        if name == "過去の出力履歴":
+            return self.get_history_line_features()
+        if name in self.layers:
+            return self.layers[name].features
+        return []
+
     def export_geojson(self) -> None:
         name = self.get_selected_layer_name()
-        if not name or name not in self.layers_filtered:
+        if not name:
             QMessageBox.warning(self, self.tr_msg("msg_export_title"), "出力対象の線データレイヤーをツリーで選択してください。")
             return
-        filtered = self.layers_filtered[name]
+        filtered = self.get_selected_layer_features(name)
         if not filtered:
             QMessageBox.information(self, self.tr_msg("msg_export_title"), self.tr_msg("msg_no_export_data"))
             return
@@ -1793,10 +1802,10 @@ class MainWindow(QMainWindow):
 
     def export_turnout_json(self) -> None:
         name = self.get_selected_layer_name()
-        if not name or name not in self.layers_filtered:
+        if not name:
             QMessageBox.warning(self, self.tr_msg("msg_export_title"), "出力対象の線データレイヤーをツリーで選択してください。")
             return
-        filtered = self.layers_filtered[name]
+        filtered = self.get_selected_layer_features(name)
         if not filtered:
             QMessageBox.information(self, self.tr_msg("msg_export_title"), self.tr_msg("msg_no_export_data"))
             return
@@ -1830,12 +1839,12 @@ class MainWindow(QMainWindow):
 
     def export_nrclip(self) -> None:
         name = self.get_selected_layer_name()
-        if not name or name not in self.layers_filtered:
+        if not name:
             QMessageBox.warning(self, self.tr_msg("msg_export_title"), "出力対象の線データレイヤーをツリーで選択してください。")
             return
         if not self.check_bbox_required():
             return
-        filtered = self.layers_filtered[name]
+        filtered = self.get_selected_layer_features(name)
         if not filtered:
             QMessageBox.information(self, self.tr_msg("msg_export_title"), self.tr_msg("msg_no_export_data"))
             return
