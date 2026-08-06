@@ -302,8 +302,7 @@ def _simplify_turnout_routes(
                 keep[i] = True
 
         keep_near_junction_endpoints(route, coords, junction_nodes, keep, junction_spacing)
-        merge_constant_radius_arcs(coords, keep, suppress_split, curve_r_tolerance, enable_curve_r_merging)
-        spline_simplify(coords, keep, spline_tolerance, suppress_split, max_spacing)
+        spline_simplify(coords, keep, spline_tolerance, suppress_split)
         enforce_max_spacing(coords, keep, max_spacing)
 
         kept_indices = [i for i, should_keep in enumerate(keep) if should_keep]
@@ -315,10 +314,8 @@ def spline_simplify(
     coords: list[tuple[float, float]],
     keep: list[bool],
     spline_tolerance: float,
-    suppress_split: list[bool] | None = None,
-    max_spacing: float = 0.0,
+    suppress_split: list[bool] | None = None
 ) -> None:
-    """Add spline points without subdividing spans below ``max_spacing``."""
     if suppress_split is None:
         suppress_split = [False] * len(coords)
 
@@ -338,21 +335,13 @@ def spline_simplify(
             if orig_end - orig_start <= 1:
                 continue
 
-            span_dx = coords[orig_end][0] - coords[orig_start][0]
-            span_dy = coords[orig_end][1] - coords[orig_start][1]
-            span_distance = math.hypot(span_dx, span_dy)
-            if max_spacing > 0.0 and span_distance <= max_spacing:
-                continue
-
             worst_dev = 0.0
             worst_orig = orig_start
             for oi in range(orig_start + 1, orig_end):
-                if suppress_split[oi]:
-                    continue
                 ox, oy = coords[oi]
                 best_d = float("inf")
-                for s in range(33):
-                    t = s / 32.0
+                for s in range(129):
+                    t = s / 128.0
                     pt = bezier_point(seg, t)
                     d = math.hypot(ox - pt[0], oy - pt[1])
                     if d < best_d:
