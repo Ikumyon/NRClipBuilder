@@ -8,6 +8,7 @@ ALIGNMENT_THRESHOLD = 2.5
 BRANCH_OFFSET = 5.0
 
 # --- Hobby Spline Algorithm & Simplification Implementation ---
+# Match Nimby Rails' actual curve algorithm (reverse engineered from NIMBYRails.exe)
 
 class BezierSegment:
     def __init__(self, p0: tuple[float, float], c0: tuple[float, float], c1: tuple[float, float], p1: tuple[float, float]):
@@ -16,7 +17,7 @@ class BezierSegment:
         self.c1 = c1
         self.p1 = p1
 
-DELTA = (3.0 - math.sqrt(5.0)) / 2.0
+DELTA = (3.0 - math.sqrt(5.0)) / 2.0  # (3 - √5) / 2 ≈ 0.382
 EPSILON = 1e-10
 
 def normalize_angle(a: float) -> float:
@@ -56,51 +57,50 @@ def bezier_point(seg: BezierSegment, t: float) -> tuple[float, float]:
     y = mt3 * seg.p0[1] + 3.0 * mt2 * t * seg.c0[1] + 3.0 * mt * t2 * seg.c1[1] + t3 * seg.p1[1]
     return x, y
 
-def hobby_spline(points: list[tuple[float, float]]) -> list[BezierSegment]:
-    if len(points) < 2:
-        return []
-    if len(points) == 2:
-        x0, y0 = points[0]
-        x1, y1 = points[1]
-        angle = math.atan2(y1 - y0, x1 - x0)
-        d = math.hypot(x1 - x0, y1 - y0) / 3.0
-        ca, sa = math.cos(angle), math.sin(angle)
-        return [BezierSegment(
-            p0=(x0, y0),
-            c0=(x0 + ca * d, y0 + sa * d),
-            c1=(x1 - ca * d, y1 - sa * d),
-            p1=(x1, y1)
-        )]
-
-    n = len(points)
+def compute_chords(points: list[tuple[float, float]]) -> tuple[list[tuple[float, float]], list[float]]:
     chords = []
     chord_lens = []
-    for i in range(n - 1):
+    for i in range(len(points) - 1):
         dx = points[i + 1][0] - points[i][0]
         dy = points[i + 1][1] - points[i][1]
         length = max(math.hypot(dx, dy), EPSILON)
         chords.append((dx, dy))
         chord_lens.append(length)
+    return chords, chord_lens
 
+def compute_tangent_angles(
+    chords: list[tuple[float, float]],
+    n: int,
+    start_tangent: float | None = None,
+    end_tangent: float | None = None,
+) -> list[float]:
     angles = []
     for i in range(n):
         if i == 0:
-            angle = math.atan2(chords[0][1], chords[0][0])
+            angle = start_tangent if start_tangent is not None else math.atan2(chords[0][1], chords[0][0])
         elif i == n - 1:
-            angle = math.atan2(chords[n - 2][1], chords[n - 2][0])
+            angle = end_tangent if end_tangent is not None else math.atan2(chords[n - 2][1], chords[n - 2][0])
         else:
             in_angle = math.atan2(chords[i - 1][1], chords[i - 1][0])
             out_angle = math.atan2(chords[i][1], chords[i][0])
             turn = normalize_angle(out_angle - in_angle)
             angle = in_angle + turn / 2.0
         angles.append(angle)
+    return angles
 
+def generate_segments(
+    points: list[tuple[float, float]],
+    chords: list[tuple[float, float]],
+    chord_lens: list[float],
+    tangent_angles: list[float],
+) -> list[BezierSegment]:
+    n = len(points)
     segments = []
     for i in range(n - 1):
         chord_angle = math.atan2(chords[i][1], chords[i][0])
         d = chord_lens[i]
-        alpha = normalize_angle(angles[i] - chord_angle)
-        beta = normalize_angle(chord_angle - angles[i + 1])
+        alpha = normalize_angle(tangent_angles[i] - chord_angle)
+        beta = normalize_angle(chord_angle - tangent_angles[i + 1])
         rho_a, rho_b = hobby_rho(alpha, beta)
         c0_dx, c0_dy = rotate_unit(chord_angle + alpha)
         c1_dx, c1_dy = rotate_unit(chord_angle - beta)
@@ -111,6 +111,34 @@ def hobby_spline(points: list[tuple[float, float]]) -> list[BezierSegment]:
             p1=points[i + 1]
         ))
     return segments
+
+def hobby_spline_with_tangents(
+    points: list[tuple[float, float]],
+    start_tangent: float | None = None,
+    end_tangent: float | None = None,
+) -> list[BezierSegment]:
+    if len(points) < 2:
+        return []
+    if len(points) == 2:
+        x0, y0 = points[0]
+        x1, y1 = points[1]
+        angle = start_tangent if start_tangent is not None else math.atan2(y1 - y0, x1 - x0)
+        d = math.hypot(x1 - x0, y1 - y0) / 3.0
+        ca, sa = math.cos(angle), math.sin(angle)
+        return [BezierSegment(
+            p0=(x0, y0),
+            c0=(x0 + ca * d, y0 + sa * d),
+            c1=(x1 - ca * d, y1 - sa * d),
+            p1=(x1, y1)
+        )]
+
+    n = len(points)
+    chords, chord_lens = compute_chords(points)
+    tangent_angles = compute_tangent_angles(chords, n, start_tangent, end_tangent)
+    return generate_segments(points, chords, chord_lens, tangent_angles)
+
+def hobby_spline(points: list[tuple[float, float]]) -> list[BezierSegment]:
+    return hobby_spline_with_tangents(points, None, None)
 
 def keep_near_junction_endpoints(
     route: list[int],
@@ -164,6 +192,50 @@ def enforce_max_spacing(
             keep[i] = True
             last_kept = i
 
+def _simplify_turnout_routes(
+    route_data: dict[str, Any],
+    osm: dict[str, Any],
+    spline_tolerance: float,
+    junction_spacing: float,
+    max_spacing: float,
+) -> list[list[tuple[int | None, float, float]]]:
+    simplified_routes: list[list[tuple[int | None, float, float]]] = []
+    junction_nodes: set[int] = route_data['junction_nodes']
+    
+    node_layer = osm.get('node_layer', {})
+    node_track_type = osm.get('node_track_type', {})
+    node_type = osm.get('node_type', {})
+
+    for route, coords in zip(route_data['routes'], route_data['route_coords']):
+        keep = [False] * len(coords)
+        keep[0] = True
+        keep[-1] = True
+
+        for i, node_id in enumerate(route):
+            if node_id in junction_nodes:
+                keep[i] = True
+            # レイヤー境界を保護
+            if i > 0 and node_layer.get(route[i - 1], 0) != node_layer.get(node_id, 0):
+                keep[i - 1] = True
+                keep[i] = True
+            # トラック種別境界を保護
+            if i > 0 and node_track_type.get(route[i - 1], 3) != node_track_type.get(node_id, 3):
+                keep[i - 1] = True
+                keep[i] = True
+            # ノード構造境界を保護
+            if i > 0 and node_type.get(route[i - 1], 1) != node_type.get(node_id, 1):
+                keep[i - 1] = True
+                keep[i] = True
+
+        keep_near_junction_endpoints(route, coords, junction_nodes, keep, junction_spacing)
+        enforce_max_spacing(coords, keep, max_spacing)
+        spline_simplify(coords, keep, spline_tolerance)
+
+        kept_indices = [i for i, should_keep in enumerate(keep) if should_keep]
+        simplified_routes.append([(i, coords[i][0], coords[i][1]) for i in kept_indices])
+
+    return simplified_routes
+
 def spline_simplify(coords: list[tuple[float, float]], keep: list[bool], spline_tolerance: float) -> None:
     for _ in range(20):
         kept_pts = [coords[i] for i in range(len(coords)) if keep[i]]
@@ -216,6 +288,9 @@ def interpolate_along_polyline(
     max_spacing: float
 ) -> list[tuple[float, float]]:
     """Interpolate coordinates along the polyline connecting start_idx and end_idx with max_spacing interval (in Mercator meters)."""
+    if not coords or start_idx < 0 or end_idx >= len(coords) or start_idx >= end_idx:
+        return []
+
     cum_len = [0.0]
     for k in range(start_idx, end_idx):
         dx = coords[k + 1][0] - coords[k][0]
@@ -240,15 +315,16 @@ def interpolate_along_polyline(
         else:
             local_t = 0.0
         oi = start_idx + seg
-        px = coords[oi][0] + (coords[oi + 1][0] - coords[oi][0]) * local_t
-        py = coords[oi][1] + (coords[oi + 1][1] - coords[oi][1]) * local_t
-        interpolated.append((px, py))
+        if oi + 1 < len(coords):
+            px = coords[oi][0] + (coords[oi + 1][0] - coords[oi][0]) * local_t
+            py = coords[oi][1] + (coords[oi + 1][1] - coords[oi][1]) * local_t
+            interpolated.append((px, py))
     return interpolated
 
 def _subdivide_long_segments(
     simplified: list[list[tuple[int | None, float, float]]],
     route_coords: list[list[tuple[float, float]]],
-    max_spacing: float,
+    max_spacing: float = 2000.0,
 ) -> list[list[tuple[int | None, float, float]]]:
     subdivided_routes: list[list[tuple[int | None, float, float]]] = []
 
@@ -519,50 +595,6 @@ def _merge_ways_into_routes(osm: dict[str, Any]) -> dict[str, Any]:
         'junction_nodes': junction_nodes,
         'junction_owner': junction_owner,
     }
-
-def _simplify_turnout_routes(
-    route_data: dict[str, Any],
-    osm: dict[str, Any],
-    spline_tolerance: float,
-    junction_spacing: float,
-    max_spacing: float,
-) -> list[list[tuple[int | None, float, float]]]:
-    simplified_routes: list[list[tuple[int | None, float, float]]] = []
-    junction_nodes: set[int] = route_data['junction_nodes']
-    
-    node_layer = osm.get('node_layer', {})
-    node_track_type = osm.get('node_track_type', {})
-    node_type = osm.get('node_type', {})
-
-    for route, coords in zip(route_data['routes'], route_data['route_coords']):
-        keep = [False] * len(coords)
-        keep[0] = True
-        keep[-1] = True
-
-        for i, node_id in enumerate(route):
-            if node_id in junction_nodes:
-                keep[i] = True
-            # レイヤー境界を保護
-            if i > 0 and node_layer.get(route[i - 1], 0) != node_layer.get(node_id, 0):
-                keep[i - 1] = True
-                keep[i] = True
-            # トラック種別境界を保護
-            if i > 0 and node_track_type.get(route[i - 1], 3) != node_track_type.get(node_id, 3):
-                keep[i - 1] = True
-                keep[i] = True
-            # ノード構造境界を保護
-            if i > 0 and node_type.get(route[i - 1], 1) != node_type.get(node_id, 1):
-                keep[i - 1] = True
-                keep[i] = True
-
-        keep_near_junction_endpoints(route, coords, junction_nodes, keep, junction_spacing)
-        enforce_max_spacing(coords, keep, max_spacing)
-        spline_simplify(coords, keep, spline_tolerance)
-
-        kept_indices = [i for i, should_keep in enumerate(keep) if should_keep]
-        simplified_routes.append([(i, coords[i][0], coords[i][1]) for i in kept_indices])
-
-    return simplified_routes
 
 def _make_track_node(
     node_id: int,

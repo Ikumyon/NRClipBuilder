@@ -22,9 +22,9 @@ def geojson_to_nrclip_bytes(
     name: str,
     scale_x: float = 1.0,
     scale_y: float = 1.0,
-    spline_tolerance: float = 5.0,
+    spline_tolerance: float = 2.0,
     junction_spacing: float = 30.0,
-    max_spacing: float = 200.0,
+    max_spacing: float = 2000.0,
     tangent_mode: bool = False,
 ) -> bytes:
     """Convert GeoJSON features to .nrclip using Turnout route topology."""

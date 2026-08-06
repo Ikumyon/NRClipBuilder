@@ -110,6 +110,20 @@ def make_leaflet_html(
   .elevation-tooltip::before {{
     border-top-color: rgba(33, 37, 41, 0.9) !important;
   }}
+  .segment-info-tooltip {{
+    background-color: rgba(33, 37, 41, 0.88) !important;
+    border: 1px solid #868e96 !important;
+    border-radius: 3px !important;
+    color: #f8f9fa !important;
+    font-size: 10px !important;
+    line-height: 1.25 !important;
+    padding: 2px 5px !important;
+    pointer-events: none !important;
+    white-space: nowrap;
+  }}
+  .segment-info-tooltip::before {{
+    display: none !important;
+  }}
   .draw-node-icon {{
     background: transparent !important;
     border: none !important;
@@ -229,6 +243,30 @@ function featureWeight(feat, src) {{
   return 5;
 }}
 
+function bindStoredSegmentInfo(feat, lyr) {{
+  const coords = feat && feat.geometry && feat.geometry.coordinates;
+  if (!Array.isArray(coords) || coords.length < 2) return;
+  const p1 = L.latLng(coords[0][1], coords[0][0]);
+  const p2 = L.latLng(coords[coords.length - 1][1], coords[coords.length - 1][0]);
+  const seg = {{ polyline: lyr, distance: p1.distanceTo(p2) }};
+  updateSegmentInfoLabel(seg, p1, p2);
+  const fetchEndpoint = function(point) {{
+    const url = 'https://cyberjapandata2.gsi.go.jp/general/dem/scripts/getelevation.php?lon=' + point.lng.toFixed(7) + '&lat=' + point.lat.toFixed(7) + '&outtype=JSON';
+    fetch(url)
+      .then(response => response.json())
+      .then(data => {{
+        const value = data && data.elevation !== undefined ? parseFloat(data.elevation) : NaN;
+        if (Number.isFinite(value)) {{
+          point.elevation = value;
+          updateSegmentInfoLabel(seg, p1, p2);
+        }}
+      }})
+      .catch(() => {{}});
+  }};
+  fetchEndpoint(p1);
+  fetchEndpoint(p2);
+}}
+
 data.features.forEach(function(f) {{
   var src = (f.properties && (f.properties._source || f.properties.source)) || "Imported Data";
   if (!groupedFeatures[src]) {{
@@ -283,6 +321,9 @@ sourceOrder.forEach(function(src) {{
         return propHtml(((layer.feature || feat).properties) || {{}});
       }});
       if (feat.geometry && feat.geometry.type === 'LineString') {{
+        if (feat.properties && feat.properties._manual_segment === true) {{
+          bindStoredSegmentInfo(feat, lyr);
+        }}
         lyr.on('click', function(e) {{
           if (drawMode && drawPoints.length === 0) {{
             L.DomEvent.stopPropagation(e);
@@ -565,31 +606,32 @@ let placedNodeMarkers = [];
 let selectedPlacedLine = null;
 
 window.setDrawLineMode = function(enabled) {{
-  drawMode = enabled;
-  if (enabled && selectMode) {{
-    selectMode = false;
-    dragStartLatLng = null;
-    const bboxBtn = document.getElementById('select-bbox-btn');
-    if (bboxBtn) {{
-      bboxBtn.style.backgroundColor = 'white';
-      bboxBtn.innerHTML = '{select_btn_text}';
+  const applyMode = function() {{
+    drawMode = enabled;
+    if (enabled && selectMode) {{
+      selectMode = false;
+      dragStartLatLng = null;
+      const bboxBtn = document.getElementById('select-bbox-btn');
+      if (bboxBtn) {{
+        bboxBtn.style.backgroundColor = 'white';
+        bboxBtn.innerHTML = '{select_btn_text}';
+      }}
+      map.dragging.enable();
     }}
-    map.dragging.enable();
-  }}
-  if (enabled) {{
-    clearDrawState();
-    addPlacedNodeHandles();
-    map.doubleClickZoom.disable();
-    map.getContainer().style.cursor = 'crosshair';
-  }} else {{
-    clearDrawState();
-    clearPlacedNodeHandles();
-    map.doubleClickZoom.enable();
-    map.getContainer().style.cursor = '';
-    if (typeof elevationTooltip !== 'undefined') {{
-      map.closeTooltip(elevationTooltip);
+    if (enabled) {{
+      addPlacedNodeHandles();
+      map.doubleClickZoom.disable();
+      map.getContainer().style.cursor = 'crosshair';
+    }} else {{
+      clearPlacedNodeHandles();
+      map.doubleClickZoom.enable();
+      map.getContainer().style.cursor = '';
+      if (typeof elevationTooltip !== 'undefined') {{
+        map.closeTooltip(elevationTooltip);
+      }}
     }}
-  }}
+  }};
+  clearDrawState(applyMode);
 }};
 
 window.setDrawStructure = function(struct) {{
@@ -614,7 +656,7 @@ window.setDrawStructure = function(struct) {{
   }}
 }};
 
-function clearDrawState() {{
+function clearDrawStateInternal() {{
   drawPoints = [];
   drawSegments.forEach(s => map.removeLayer(s.polyline));
   drawSegments = [];
@@ -622,6 +664,57 @@ function clearDrawState() {{
   drawMarkers.forEach(m => map.removeLayer(m));
   drawMarkers = [];
 }}
+
+window.resolveClearDrawState = function(token, action) {{
+  if (window._pendingClearDrawToken !== token) return;
+  window._pendingClearDrawToken = null;
+  if (action === 'clear') {{
+    clearDrawStateInternal();
+    if (window._pendingClearDrawCallback) window._pendingClearDrawCallback();
+  }}
+  window._pendingClearDrawCallback = null;
+}};
+
+function clearDrawState(afterClear) {{
+  const hasDraft = drawPoints.length > 0 || drawSegments.length > 0 || drawPreviewLine !== null;
+  if (!hasDraft) {{
+    clearDrawStateInternal();
+    if (afterClear) afterClear();
+    return;
+  }}
+  const token = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  window._pendingClearDrawToken = token;
+  window._pendingClearDrawCallback = afterClear || null;
+  document.title = 'DRAW_STATE_CLEAR_REQUEST:' + token;
+}}
+
+window.restoreDrawDraft = function(data) {{
+  clearDrawState();
+  if (!Array.isArray(data) || data.length === 0) return;
+  const points = [];
+  data.forEach(seg => {{
+    const coords = seg && seg.coords;
+    if (!Array.isArray(coords) || coords.length < 2) return;
+    const start = L.latLng(coords[0][1], coords[0][0]);
+    const end = L.latLng(coords[1][1], coords[1][0]);
+    start.elevation = null;
+    end.elevation = null;
+    fetchClickElevation(start);
+    fetchClickElevation(end);
+    if (points.length === 0) points.push(start);
+    points.push(end);
+    const segmentLine = L.polyline([start, end]).addTo(map);
+    updatePolylineStyle(segmentLine, seg.structure || 'ground');
+    drawSegments.push({{
+      polyline: segmentLine,
+      structure: seg.structure || 'ground',
+      coords: coords,
+      distance: seg.distance || 0
+    }});
+  }});
+  points.forEach(point => drawMarkers.push(createDrawMarker(point)));
+  drawPoints = points;
+}};
 
 function clearPlacedNodeHandles() {{
   placedNodeMarkers.forEach(marker => map.removeLayer(marker));
@@ -714,6 +807,33 @@ function updatePolylineStyle(polyline, struct) {{
   }});
 }}
 
+function formatSegmentDistance(distance) {{
+  return distance >= 1000 ? (distance / 1000).toFixed(2) + ' km' : distance.toFixed(1) + ' m';
+}}
+
+function updateSegmentInfoLabel(seg, p1, p2) {{
+  if (!seg.infoTooltip) {{
+    seg.polyline.bindTooltip('', {{
+      permanent: false,
+      direction: 'center',
+      className: 'segment-info-tooltip',
+      interactive: false,
+      opacity: 0.9
+    }});
+    seg.infoTooltip = seg.polyline.getTooltip();
+  }}
+  const startElevation = Number.isFinite(p1.elevation) ? p1.elevation.toFixed(1) + ' m' : '--';
+  const endElevation = Number.isFinite(p2.elevation) ? p2.elevation.toFixed(1) + ' m' : '--';
+  let slope = '--';
+  if (Number.isFinite(p1.elevation) && Number.isFinite(p2.elevation) && seg.distance > 0) {{
+    slope = (((p2.elevation - p1.elevation) / seg.distance) * 1000).toFixed(1) + ' ‰';
+  }}
+  seg.infoTooltip.setContent(
+    '始点 ' + startElevation + ' / 終点 ' + endElevation +
+    '<br>' + formatSegmentDistance(seg.distance) + ' / 勾配 ' + slope
+  );
+}}
+
 map.on('click', function(e) {{
   if (!drawMode) return;
   const latlng = getSnappedLatLng(e.latlng);
@@ -741,21 +861,27 @@ map.on('click', function(e) {{
       distance: dist
     }};
     drawSegments.push(segObj);
-    updateDrawDraftTitle();
+    updateSegmentInfoLabel(segObj, p1, p2);
   }}
+  updateDrawDraftTitle();
 }});
 
 function fetchClickElevation(latlngObj) {{
   const url = 'https://cyberjapandata2.gsi.go.jp/general/dem/scripts/getelevation.php?lon=' + latlngObj.lng.toFixed(7) + '&lat=' + latlngObj.lat.toFixed(7) + '&outtype=JSON';
-  if (elevationAbortController) elevationAbortController.abort();
-  elevationAbortController = new AbortController();
-  fetch(url, {{ signal: elevationAbortController.signal }})
+  fetch(url)
     .then(res => res.json())
     .then(data => {{
       if (data && data.elevation !== undefined && data.elevation !== "-----") {{
         const elevNum = parseFloat(data.elevation);
         if (!isNaN(elevNum)) {{
           latlngObj.elevation = elevNum;
+          drawSegments.forEach(seg => {{
+            if (seg.coords && seg.coords.some(coord => coord[0] === latlngObj.lng && coord[1] === latlngObj.lat)) {{
+              const first = drawPoints.find(point => point.lng === seg.coords[0][0] && point.lat === seg.coords[0][1]);
+              const second = drawPoints.find(point => point.lng === seg.coords[1][0] && point.lat === seg.coords[1][1]);
+              if (first && second) updateSegmentInfoLabel(seg, first, second);
+            }}
+          }});
         }}
       }}
     }})
@@ -836,6 +962,7 @@ function rebuildPolyline() {{
       coords: [[p1.lng, p1.lat], [p2.lng, p2.lat]],
       distance: dist
     }});
+    updateSegmentInfoLabel(drawSegments[drawSegments.length - 1], p1, p2);
   }}
 }}
 
@@ -866,11 +993,14 @@ function updateDrawnLineTitle() {{
 }}
 
 function updateDrawDraftTitle() {{
-  const data = drawSegments.map(s => ({{
-    coords: s.coords,
-    structure: s.structure,
-    distance: s.distance
-  }}));
+  const data = {{
+    points: drawPoints.map(point => [point.lng, point.lat]),
+    segments: drawSegments.map(s => ({{
+      coords: s.coords,
+      structure: s.structure,
+      distance: s.distance
+    }}))
+  }};
   const payload = JSON.stringify(data);
   const chunkSize = 1200;
   if (payload.length <= chunkSize) {{

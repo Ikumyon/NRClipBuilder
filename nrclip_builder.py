@@ -101,10 +101,12 @@ class MainWindow(QMainWindow):
         # 設定・履歴管理クラスの初期化
         config_path = get_executable_dir() / "app_config.json"
         self.app_config = AppConfig(config_path)
-        self.recovery_path = config_path.with_name("nrclip_builder_recovery.json")
-        self._recovery_dirty_layers: set[str] = set()
-        self._recovery_deleted_layers: set[str] = set()
+        self.line_backup_path = config_path.with_name("line_data_backup.nrline")
+        self._line_backup_dirty_layers: set[str] = set()
+        self._line_backup_deleted_layers: set[str] = set()
         self._draw_line_draft: list[dict[str, Any]] = []
+        self._draw_line_points: list[list[float]] = []
+        self._restore_draft_after_map_reload = False
         history_path = get_executable_dir() / "bbox_history.json"
         self.history_manager = HistoryManager(history_path)
 
@@ -448,7 +450,8 @@ class MainWindow(QMainWindow):
         self.update_window_title()
         
         if hasattr(self, "map_widget"):
-            self.map_widget.retranslate_map(self.current_lang.split("-")[0], self.translation)
+            if self.confirm_draw_line_before_reload():
+                self.map_widget.retranslate_map(self.current_lang.split("-")[0], self.translation)
         
         self.setup_icons()
 
@@ -541,7 +544,7 @@ class MainWindow(QMainWindow):
         if self.draw_line_btn.isChecked():
             self.log_msg(self.tr_msg("msg_draw_line_ready"))
 
-    def add_drawn_line(self, segments: list[dict[str, Any]]) -> bool:
+    def add_drawn_line(self, segments: list[dict[str, Any]], refresh_map: bool = True) -> bool:
         if not segments:
             return
             
@@ -604,6 +607,7 @@ class MainWindow(QMainWindow):
                 "name": name.strip(),
                 "railway": "rail",
                 "_source": target_layer_name,
+                "_manual_segment": True,
             }
             
             if struct == "bridge":
@@ -634,70 +638,75 @@ class MainWindow(QMainWindow):
             "store": target_layer_name,
             "features": added_features,
         })
-        self._mark_recovery_dirty(target_layer_name)
+        self._mark_line_backup_dirty(target_layer_name)
         
         self.update_layer_tree()
         self.select_tree_layer(target_layer_name)
-        self.apply_filter()
+        if refresh_map:
+            self.apply_filter()
+        else:
+            self.layers_filtered[target_layer_name] = list(store.features)
+            if self.get_selected_layer_name() == target_layer_name:
+                self._refresh_table(store.features)
         self.save_config_to_file()
         
         self.log_msg(self.tr_msg("msg_draw_line_added").format(count=len(segments) + 1))
         return True
 
-    def _mark_recovery_dirty(self, layer_name: str) -> None:
+    def _mark_line_backup_dirty(self, layer_name: str) -> None:
         """変更直後に復旧対象として記録する。通常保存とは独立した退避。"""
-        self._recovery_deleted_layers.discard(layer_name)
-        self._recovery_dirty_layers.add(layer_name)
-        self.write_recovery_backup()
+        self._line_backup_deleted_layers.discard(layer_name)
+        self._line_backup_dirty_layers.add(layer_name)
+        self.write_line_data_backup()
 
-    def write_recovery_backup(self) -> None:
-        """変更レイヤーを一時ファイル経由で即時退避する。
-
-        書き込み途中のファイルを復旧データとして扱わないよう、flush/fsync後に置換する。
-        """
-        if not self._recovery_dirty_layers and not self._recovery_deleted_layers and not self._draw_line_draft:
-            return
+    def write_line_data_backup(self) -> None:
+        """設定とは独立した線データ専用バックアップを毎回置換する。"""
         layers: list[dict[str, Any]] = []
-        for name in sorted(self._recovery_dirty_layers):
+        for name in sorted(self._line_backup_dirty_layers):
             store = self.layers.get(name)
-            if store is None:
-                continue
-            layers.append({
-                "name": name,
-                "checked": name in self.active_layers,
-                "opacity": self.layer_opacities.get(name, 1.0),
-                "features": store.features,
-            })
+            if store is not None:
+                layers.append({
+                    "name": name,
+                    "checked": name in self.active_layers,
+                    "opacity": self.layer_opacities.get(name, 1.0),
+                    "features": store.features,
+                })
         payload = {
-            "version": 1,
+            "format": "NRCLIP-LINE-DATA-1",
             "layers": layers,
-            "deleted_layers": sorted(self._recovery_deleted_layers),
-            "draw_line_draft": self._draw_line_draft,
+            "deleted_layers": sorted(self._line_backup_deleted_layers),
+            "points": self._draw_line_points,
+            "segments": self._draw_line_draft,
         }
-        temp_path = self.recovery_path.with_name(self.recovery_path.name + ".tmp")
+        temp_path = self.line_backup_path.with_name(self.line_backup_path.name + ".tmp")
         try:
-            self.recovery_path.parent.mkdir(parents=True, exist_ok=True)
-            encoded = json.dumps(payload, ensure_ascii=False, indent=2)
+            encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
             with temp_path.open("w", encoding="utf-8", newline="\n") as handle:
                 handle.write(encoded)
                 handle.flush()
                 os.fsync(handle.fileno())
-            os.replace(temp_path, self.recovery_path)
+            os.replace(temp_path, self.line_backup_path)
         except Exception as exc:
-            # 通常保存の失敗に引きずられて線データを破棄しない。
-            self.log_msg(f"復旧バックアップの作成に失敗しました: {exc}")
+            self.log_msg(f"線データバックアップの作成に失敗しました: {exc}")
             try:
                 if temp_path.exists():
                     temp_path.unlink()
             except Exception:
                 pass
 
-    def restore_recovery_backup(self) -> None:
-        """前回の保存失敗・異常終了時に退避線を現在の状態へ戻す。"""
-        if not self.recovery_path.exists():
-            return
+    def clear_draw_line_backup(self) -> None:
+        self._draw_line_points = []
+        self._draw_line_draft = []
+        self.write_line_data_backup()
+
+    def restore_line_data_backup(self) -> None:
+        """前回の保存失敗・異常終了時に線データ専用バックアップを戻す。"""
         try:
-            payload = json.loads(self.recovery_path.read_text(encoding="utf-8"))
+            if not self.line_backup_path.exists():
+                return
+            payload = json.loads(self.line_backup_path.read_text(encoding="utf-8"))
+            if payload.get("format") != "NRCLIP-LINE-DATA-1":
+                return
             for name in payload.get("deleted_layers", []):
                 self.layers.pop(name, None)
                 self.active_layers.discard(name)
@@ -715,13 +724,12 @@ class MainWindow(QMainWindow):
                 else:
                     self.active_layers.discard(name)
                 self.layer_opacities[name] = float(item.get("opacity", 1.0))
-            draft = payload.get("draw_line_draft")
-            if isinstance(draft, list) and draft:
-                self._draw_line_draft = draft
-                self.log_msg("未確定の描画線も復旧バックアップに残っています。")
-            self.log_msg("保存前の線データを復旧バックアップから復元しました。")
+            self._draw_line_points = payload.get("points") or []
+            self._draw_line_draft = payload.get("segments") or []
+            if self._draw_line_draft or self._draw_line_points or payload.get("layers"):
+                self.log_msg("線データ専用バックアップを復元しました。")
         except Exception as exc:
-            self.log_msg(f"復旧バックアップを読み込めませんでした: {exc}")
+            self.log_msg(f"線データ専用バックアップを読み込めませんでした: {exc}")
 
     def update_window_title(self) -> None:
         active_layer_name = self.get_selected_layer_name()
@@ -801,6 +809,8 @@ class MainWindow(QMainWindow):
 
     def apply_filter(self, *args: Any) -> None:
         try:
+            if not self.confirm_draw_line_before_reload():
+                return
             total_count = 0
             for name, store in self.layers.items():
                 features = list(store.features)
@@ -843,7 +853,30 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.critical(self, self.tr_msg("msg_filter_error_title"), f"{exc}\n\n{traceback.format_exc()}")
 
+    def confirm_draw_line_before_reload(self) -> bool:
+        """描画中の線を失う可能性がある再読み込み前に、必ず確認する。"""
+        if not self.draw_line_btn.isChecked() or not (self._draw_line_draft or self._draw_line_points):
+            return True
+        answer = QMessageBox.question(
+            self,
+            "描画中の線があります",
+            "地図を更新すると描画中の線が消えます。保存しますか？",
+            QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
+            QMessageBox.Save,
+        )
+        if answer == QMessageBox.Cancel:
+            return False
+        if answer == QMessageBox.Save:
+            self.write_line_data_backup()
+            self._restore_draft_after_map_reload = True
+        else:
+            self.clear_draw_line_backup()
+            self._restore_draft_after_map_reload = False
+        return True
+
     def apply_active_map(self, reload_map: bool = True, preserve_view: bool = True) -> None:
+        if reload_map and not self.confirm_draw_line_before_reload():
+            return
         configs = []
         registered_map_by_name = {
             custom_map.get("name", ""): custom_map
@@ -997,6 +1030,12 @@ class MainWindow(QMainWindow):
             self.update_map_active_bbox()
             if self.draw_line_btn.isChecked() and HAS_WEBENGINE:
                 self.apply_draw_line_mode()
+                if self._restore_draft_after_map_reload and self._draw_line_draft:
+                    draft_json = json.dumps(self._draw_line_draft, ensure_ascii=False)
+                    self.map_widget.web.page().runJavaScript(
+                        f"window.restoreDrawDraft({draft_json});"
+                    )
+                    self._restore_draft_after_map_reload = False
 
     def on_coordinate_edited(self) -> None:
         try:
@@ -1099,6 +1138,31 @@ class MainWindow(QMainWindow):
                     self.select_history_row_by_name(name)
                 except ValueError:
                     pass
+        elif title.startswith("DRAW_STATE_CLEAR_REQUEST:"):
+            token = title[len("DRAW_STATE_CLEAR_REQUEST:"):]
+            answer = QMessageBox.question(
+                self,
+                "描画中の線があります",
+                "描画中の線を消去します。保存しますか？",
+                QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
+                QMessageBox.Save,
+            )
+            action = "cancel"
+            if answer == QMessageBox.Save:
+                self.write_line_data_backup()
+                action = "clear"
+            elif answer == QMessageBox.Discard:
+                self.clear_draw_line_backup()
+                action = "clear"
+            else:
+                # JS側は描画モードを維持するため、Qt側のボタン状態も戻す。
+                self.set_draw_buttons_active(True)
+            if HAS_WEBENGINE:
+                self.map_widget.web.page().runJavaScript(
+                    "if (typeof window.resolveClearDrawState === 'function') "
+                    f"{{ window.resolveClearDrawState({json.dumps(token)}, {json.dumps(action)}); }} "
+                    "else { window._pendingClearDrawToken = null; window._pendingClearDrawCallback = null; }"
+                )
         elif title.startswith("DRAWN_LINE_DRAFT_CHUNK:"):
             parts = title.split(":", 4)
             if len(parts) == 5:
@@ -1113,15 +1177,21 @@ class MainWindow(QMainWindow):
                     if len(transfer["chunks"]) == total:
                         payload = "".join(transfer["chunks"][i] for i in range(total))
                         del self._draw_line_transfers["draft:" + transfer_id]
-                        self._draw_line_draft = json.loads(payload)
-                        self.write_recovery_backup()
+                        draft = json.loads(payload)
+                        self._draw_line_points = draft.get("points") or []
+                        self._draw_line_draft = draft.get("segments") or []
+                        self.write_line_data_backup()
+                        self.write_line_data_backup()
                 except Exception as e:
                     self._draw_line_transfers.pop("draft:" + transfer_id, None)
                     self.log_msg(f"描画途中のバックアップに失敗しました: {e}")
         elif title.startswith("DRAWN_LINE_DRAFT:"):
             try:
-                self._draw_line_draft = json.loads(title[18:])
-                self.write_recovery_backup()
+                draft = json.loads(title[18:])
+                self._draw_line_points = draft.get("points") or []
+                self._draw_line_draft = draft.get("segments") or []
+                self.write_line_data_backup()
+                self.write_line_data_backup()
             except Exception as e:
                 self.log_msg(f"描画途中のバックアップに失敗しました: {e}")
         elif title.startswith("DRAWN_LINE_CHUNK:"):
@@ -1147,16 +1217,16 @@ class MainWindow(QMainWindow):
             coords_str = title[11:]
             try:
                 coordinates = json.loads(coords_str)
-                added = self.add_drawn_line(coordinates)
+                added = self.add_drawn_line(coordinates, refresh_map=False)
             except Exception as e:
                 self.log_msg(f"Error parsing drawn line: {e}")
                 QMessageBox.critical(self, "線の追加エラー", f"線をレイヤーに追加できませんでした。\n{e}")
                 added = False
             if added:
-                self._draw_line_draft = []
-                self.write_recovery_backup()
+                self.clear_draw_line_backup()
                 self.set_draw_buttons_active(False)
                 self.apply_draw_line_mode()
+                self.apply_filter()
             elif HAS_WEBENGINE:
                 # 未確定の線を残したまま、再確定できる状態に戻す。
                 self.map_widget.web.page().runJavaScript("document.title = 'DRAW_LINE_ACTIVE';")
@@ -1175,19 +1245,18 @@ class MainWindow(QMainWindow):
             self.set_draw_buttons_active(False)
             self.apply_draw_line_mode()
         elif title == "DRAW_LINE_CANCEL":
-            self._draw_line_draft = []
-            self.write_recovery_backup()
+            self.clear_draw_line_backup()
             self.set_draw_buttons_active(False)
             self.apply_draw_line_mode()
             self.log_msg("描画をキャンセルしました")
 
     def finish_drawn_line(self, coordinates: list[dict[str, Any]]) -> None:
-        added = self.add_drawn_line(coordinates)
+        added = self.add_drawn_line(coordinates, refresh_map=False)
         if added:
-            self._draw_line_draft = []
-            self.write_recovery_backup()
+            self.clear_draw_line_backup()
             self.set_draw_buttons_active(False)
             self.apply_draw_line_mode()
+            self.apply_filter()
         elif HAS_WEBENGINE:
             self.map_widget.web.page().runJavaScript("document.title = 'DRAW_LINE_ACTIVE';")
 
@@ -1216,7 +1285,7 @@ class MainWindow(QMainWindow):
                 changed = True
                 layer_name = props.get("_source")
                 if layer_name:
-                    self._mark_recovery_dirty(layer_name)
+                    self._mark_line_backup_dirty(layer_name)
                 break
         if changed:
             self.save_config_to_file()
@@ -1255,7 +1324,7 @@ class MainWindow(QMainWindow):
                     props["tunnel"] = "yes"
                 feature["properties"] = props
                 if props.get("_source"):
-                    self._mark_recovery_dirty(props["_source"])
+                    self._mark_line_backup_dirty(props["_source"])
                 self.save_config_to_file()
                 return
 
@@ -1271,7 +1340,7 @@ class MainWindow(QMainWindow):
                 store.features[:] = [feature for feature in store.features if id(feature) not in added_ids]
                 store_name = edit.get("store")
                 if store_name:
-                    self._mark_recovery_dirty(store_name)
+                    self._mark_line_backup_dirty(store_name)
                 self.save_config_to_file()
                 self.apply_filter()
                 self.log_msg("直前に追加した線を取り消しました")
@@ -1416,7 +1485,7 @@ class MainWindow(QMainWindow):
         try:
             config = self.app_config.load()
             if not config:
-                self.restore_recovery_backup()
+                self.restore_line_data_backup()
                 return
             self.keyword_edit.setText(config.get("keywords", ""))
             self.field_edit.setText(config.get("fields", ""))
@@ -1437,9 +1506,9 @@ class MainWindow(QMainWindow):
             
             self.scale_x_spin.setValue(config.get("scale_x", 1.0))
             self.scale_y_spin.setValue(config.get("scale_y", 1.0))
-            self.spline_tolerance_spin.setValue(config.get("spline_tolerance", 5.0))
+            self.spline_tolerance_spin.setValue(config.get("spline_tolerance", 2.0))
             self.junction_spacing_spin.setValue(config.get("junction_spacing", 30.0))
-            self.max_spacing_spin.setValue(config.get("max_spacing", 200.0))
+            self.max_spacing_spin.setValue(config.get("max_spacing", 2000.0))
             track_mode = config.get("track_mode", "point")
             track_mode_index = self.track_mode_combo.findData(track_mode)
             self.track_mode_combo.setCurrentIndex(track_mode_index if track_mode_index != -1 else 0)
@@ -1484,7 +1553,7 @@ class MainWindow(QMainWindow):
                             self.load_path(path, checked=checked, save_config=False)
 
             # 通常設定より新しい可能性がある退避線を最後に適用する。
-            self.restore_recovery_backup()
+            self.restore_line_data_backup()
 
             self.update_layer_tree()
             self.restore_layer_order_from_config(layers_data)
@@ -1873,7 +1942,11 @@ class MainWindow(QMainWindow):
         
         self.update_layer_tree()
         self.select_tree_layer(name)
-        self.apply_filter()
+        # 空レイヤー追加では地図のHTMLを再読み込みしない。
+        self.layers_filtered[name] = []
+        self.table.clear()
+        self.table.setRowCount(0)
+        self.table.setColumnCount(0)
         self.save_config_to_file()
 
     def on_add_history_clicked(self) -> None:
@@ -1897,12 +1970,12 @@ class MainWindow(QMainWindow):
         if not entry.removable:
             return
         if entry.name in self.layers:
-            self._recovery_dirty_layers.discard(entry.name)
-            self._recovery_deleted_layers.add(entry.name)
+            self._line_backup_dirty_layers.discard(entry.name)
+            self._line_backup_deleted_layers.add(entry.name)
         if entry.on_remove:
             entry.on_remove()
         self.layer_entries.pop(idx)
-        self.write_recovery_backup()
+        self.write_line_data_backup()
         self.save_config_to_file()
         self.update_layer_tree()
         self.log_msg(f"削除しました: {entry.name}")
@@ -1929,9 +2002,9 @@ class MainWindow(QMainWindow):
         for feature in store.features:
             feature.setdefault("properties", {})["_source"] = name
         self.layers[name] = store
-        self._recovery_dirty_layers.discard(entry.name)
-        self._recovery_deleted_layers.add(entry.name)
-        self._mark_recovery_dirty(name)
+        self._line_backup_dirty_layers.discard(entry.name)
+        self._line_backup_deleted_layers.add(entry.name)
+        self._mark_line_backup_dirty(name)
         if entry.name in self.active_layers:
             self.active_layers.remove(entry.name)
             self.active_layers.add(name)
