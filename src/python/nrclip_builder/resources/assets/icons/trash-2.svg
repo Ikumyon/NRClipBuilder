@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <defs>
+    <linearGradient id="tr_body" x1="5" y1="6" x2="19" y2="22" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF8FA3"/>
+      <stop offset="0.45" stop-color="#F83B5C"/>
+      <stop offset="1" stop-color="#B4002E"/>
+    </linearGradient>
+    <linearGradient id="tr_lid" x1="3" y1="2" x2="21" y2="7" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF6F88"/>
+      <stop offset="1" stop-color="#D10E41"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#tr_body)" d="M5.5 6.5h13l-.92 12.88A2.75 2.75 0 0 1 14.84 22H9.16a2.75 2.75 0 0 1-2.74-2.62L5.5 6.5Z"/>
+  <path fill="url(#tr_lid)" d="M9.75 2A2.25 2.25 0 0 0 7.5 4.25V4.5H4a1.25 1.25 0 1 0 0 2.5h16a1.25 1.25 0 1 0 0-2.5h-3.5v-.25A2.25 2.25 0 0 0 14.25 2h-4.5Zm4.25 2.5h-4v-.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v.25Z"/>
+  <path fill="#FFEBF0" d="M10 10a.9.9 0 0 1 .9.9v6.2a.9.9 0 1 1-1.8 0v-6.2A.9.9 0 0 1 10 10Zm4 0a.9.9 0 0 1 .9.9v6.2a.9.9 0 1 1-1.8 0v-6.2A.9.9 0 0 1 14 10Z"/>
+</svg>

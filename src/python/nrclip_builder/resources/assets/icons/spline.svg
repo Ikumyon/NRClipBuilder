@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <defs>
+    <linearGradient id="sp_curve" x1="4" y1="19" x2="19" y2="4" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#36DFF1"/>
+      <stop offset="0.5" stop-color="#0094F0"/>
+      <stop offset="1" stop-color="#8A3FFC"/>
+    </linearGradient>
+    <linearGradient id="sp_node1" x1="16" y1="2" x2="22" y2="8" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF9F24"/>
+      <stop offset="1" stop-color="#D83B01"/>
+    </linearGradient>
+    <linearGradient id="sp_node2" x1="2" y1="16" x2="8" y2="22" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#52E580"/>
+      <stop offset="1" stop-color="#107C41"/>
+    </linearGradient>
+  </defs>
+  <path stroke="url(#sp_curve)" stroke-width="2.8" stroke-linecap="round" d="M5 17.5C5 10.5 10.5 5 17.5 5"/>
+  <circle cx="19" cy="5" r="3.2" fill="url(#sp_node1)"/>
+  <circle cx="19" cy="5" r="1.3" fill="#FFFFFF"/>
+  <circle cx="5" cy="19" r="3.2" fill="url(#sp_node2)"/>
+  <circle cx="5" cy="19" r="1.3" fill="#FFFFFF"/>
+</svg>

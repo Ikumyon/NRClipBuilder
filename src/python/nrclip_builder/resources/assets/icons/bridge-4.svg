@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <defs>
+    <linearGradient id="br_cable" x1="4" y1="3" x2="20" y2="11" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFCD0F"/>
+      <stop offset="1" stop-color="#FE8401"/>
+    </linearGradient>
+    <linearGradient id="br_pier" x1="6" y1="3" x2="18" y2="21" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFB900"/>
+      <stop offset="0.5" stop-color="#F7630C"/>
+      <stop offset="1" stop-color="#CA5010"/>
+    </linearGradient>
+    <linearGradient id="br_deck" x1="2" y1="12" x2="22" y2="15" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF9F24"/>
+      <stop offset="1" stop-color="#D83B01"/>
+    </linearGradient>
+    <linearGradient id="br_water" x1="3" y1="18" x2="21" y2="22" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#36DFF1"/>
+      <stop offset="1" stop-color="#0078D4"/>
+    </linearGradient>
+  </defs>
+  <path stroke="url(#br_cable)" stroke-width="1.8" stroke-linecap="round" d="M2.5 12.5C5 10.5 6.5 7.5 7 4.5M17 4.5c.5 3 2 6 4.5 8M7 4.5C9 9.5 15 9.5 17 4.5M12 8.2v4.3"/>
+  <path fill="url(#br_pier)" d="M7 3a1.25 1.25 0 0 1 1.25 1.25v13.25a1.25 1.25 0 1 1-2.5 0V4.25A1.25 1.25 0 0 1 7 3Zm10 0a1.25 1.25 0 0 1 1.25 1.25v13.25a1.25 1.25 0 1 1-2.5 0V4.25A1.25 1.25 0 0 1 17 3Z"/>
+  <rect x="2" y="12" width="20" height="2.75" rx="1.25" fill="url(#br_deck)"/>
+  <path fill="url(#br_water)" d="M3.25 19a1 1 0 0 1 1-1h15.5a1 1 0 1 1 0 2H4.25a1 1 0 0 1-1-1Z"/>
+</svg>

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <defs>
+    <linearGradient id="pl_body" x1="6" y1="6" x2="18" y2="18" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFE06B"/>
+      <stop offset="0.5" stop-color="#FFA43D"/>
+      <stop offset="1" stop-color="#E45C00"/>
+    </linearGradient>
+    <linearGradient id="pl_eraser" x1="15" y1="2" x2="21" y2="8" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF8FA3"/>
+      <stop offset="1" stop-color="#E3008C"/>
+    </linearGradient>
+    <linearGradient id="pl_tip" x1="3" y1="15" x2="8" y2="21" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFD699"/>
+      <stop offset="1" stop-color="#D48C46"/>
+    </linearGradient>
+    <linearGradient id="pl_line" x1="11" y1="20" x2="22" y2="20" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#36DFF1"/>
+      <stop offset="1" stop-color="#0078D4"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#pl_line)" d="M12 19.25a1.25 1.25 0 0 1 1.25-1.25h7.5a1.25 1.25 0 1 1 0 2.5h-7.5A1.25 1.25 0 0 1 12 19.25Z"/>
+  <path fill="url(#pl_eraser)" d="M16.59 3.09a2.83 2.83 0 0 1 4 4L18.9 8.78l-4-4 1.69-1.69Z"/>
+  <path fill="url(#pl_body)" d="m14.9 4.78 4 4-9.8 9.8-4-4 9.8-9.8Z"/>
+  <path fill="url(#pl_tip)" d="m5.1 14.58 4 4-4.78 1.58a.95.95 0 0 1-1.2-1.2l1.98-4.38Z"/>
+  <path fill="#3B3A39" d="m3.52 18.08 2.08 2.08-1.28.42a.95.95 0 0 1-1.2-1.2l.4-1.3Z"/>
+</svg>

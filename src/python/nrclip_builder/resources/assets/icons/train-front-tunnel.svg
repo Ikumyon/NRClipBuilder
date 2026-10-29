@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <defs>
+    <linearGradient id="tft_arch" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9B72FF"/>
+      <stop offset="1" stop-color="#4A25AA"/>
+    </linearGradient>
+    <linearGradient id="tft_body" x1="7" y1="6" x2="17" y2="19" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#50E6FF"/>
+      <stop offset="1" stop-color="#0078D4"/>
+    </linearGradient>
+    <linearGradient id="tft_win" x1="8" y1="8" x2="16" y2="13" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E0F7FF"/>
+      <stop offset="1" stop-color="#8AE6FF"/>
+    </linearGradient>
+    <linearGradient id="tft_rail" x1="6" y1="18" x2="18" y2="22" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFB900"/>
+      <stop offset="1" stop-color="#D83B01"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#tft_arch)" d="M12 2a10 10 0 0 0-10 10v8.75C2 21.44 2.56 22 3.25 22h2.25v-9.5a6.5 6.5 0 1 1 13 0V22h2.25c.69 0 1.25-.56 1.25-1.25V12A10 10 0 0 0 12 2Z"/>
+  <path fill="url(#tft_rail)" d="M9.1 17.8 6.8 21.3a.9.9 0 1 0 1.5.98l2.3-3.5-1.5-.98Zm5.8 0-1.5.98 2.3 3.5a.9.9 0 1 0 1.5-.98l-2.3-3.5Z"/>
+  <rect x="6.5" y="6.5" width="11" height="12.5" rx="3.2" fill="url(#tft_body)"/>
+  <rect x="8.2" y="8.2" width="7.6" height="4.2" rx="1.2" fill="url(#tft_win)"/>
+  <circle cx="9.5" cy="15.5" r="1.2" fill="#FFE06B"/>
+  <circle cx="14.5" cy="15.5" r="1.2" fill="#FFE06B"/>
+</svg>

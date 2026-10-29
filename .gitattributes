@@ -1,0 +1,2 @@
+# Keep frontend formatting identical on Windows and Linux checkouts.
+src/web/** text=auto eol=lf

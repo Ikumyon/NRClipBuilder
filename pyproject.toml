@@ -1,0 +1,33 @@
+[build-system]
+requires = ["maturin~=1.15.0"]
+build-backend = "maturin"
+
+[project]
+name = "nrclip-builder"
+dynamic = ["version"]
+requires-python = "==3.14.*"
+description = "Railway GIS editor and NIMBY Rails exporter"
+license = "MIT"
+dependencies = ["PySide6~=6.12.0", "pyshp~=3.1.4", "pyproj~=3.7.2"]
+
+[project.scripts]
+nrclip-builder = "nrclip_builder.app:main"
+
+[project.optional-dependencies]
+dev = ["pytest~=9.0.2", "pyinstaller~=6.22.3", "maturin~=1.15.0", "zstandard~=0.25.0"]
+
+[tool.maturin]
+manifest-path = "src/native/Cargo.toml"
+python-source = "src/python"
+module-name = "nrclip_builder._native"
+features = ["extension-module"]
+include = [
+  "THIRD_PARTY_NOTICES.md",
+  { path = "nrclip_builder/resources/map/*", format = ["wheel", "sdist"] },
+  { path = "src/web/**/*", format = "sdist" }
+]
+exclude = ["src/web/node_modules/**/*", "**/*.pdb"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+

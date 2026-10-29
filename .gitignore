@@ -1,26 +1,34 @@
+# Python and native build products
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.pdb
+*.whl
+*.egg-info/
+/.venv/
+/.pytest_cache/
+/build/
+/dist/
+/target/
+
+# Frontend dependencies and generated package resources
+node_modules/
+/src/python/nrclip_builder/resources/map/
+
+# Local editor settings
 .DS_Store
-app_config.json
-bbox_history.json
-build
-dist
-docs
+/.vscode/
 
-# Virtual Environment
-.venv/
+# Local user data, exports and previews (preserved)
+/.userdata/
+/collections.nrclip
+/nrclip_builder.zip
+/nrclip/
+/*.html
+/docs/
 
-# Reference repository
-Turnout-main/
-
-# Temporary map outputs
-*.html
-.vscode
-nrclip_builder.zip
-collections.nrclip
-N05-20_GML/
-NIMBY-Rails-Shapes-to-POIs-main/
-nrclip/
-line_data_backup.nrline
+# Local datasets and reference repositories (preserved)
+/N05-20_GML/
+/Turnout-main/
+/NIMBY-Rails-Shapes-to-POIs-main/

@@ -1,0 +1,30 @@
+{
+  "name": "nrclip-map",
+  "version": "0.0.0-dev",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "format:check": "prettier --check src tests build.mjs index.html package.json tsconfig.json",
+    "build": "npm run typecheck && node build.mjs"
+  },
+  "dependencies": {
+    "leaflet": "^1.9.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/geojson": "^7946.0.16",
+    "@types/leaflet": "^1.9.22",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "esbuild": "^0.28.2",
+    "prettier": "^3.9.10",
+    "typescript": "^7.0.2"
+  }
+}

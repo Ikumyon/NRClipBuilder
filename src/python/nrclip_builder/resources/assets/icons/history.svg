@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <defs>
+    <linearGradient id="hist_face" x1="5" y1="4" x2="19" y2="20" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#A6E9FF"/>
+      <stop offset="1" stop-color="#36DFF1"/>
+    </linearGradient>
+    <linearGradient id="hist_ring" x1="3" y1="3" x2="21" y2="21" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#29C3FF"/>
+      <stop offset="0.5" stop-color="#0078D4"/>
+      <stop offset="1" stop-color="#1B3A8A"/>
+    </linearGradient>
+    <linearGradient id="hist_hands" x1="11" y1="7" x2="16" y2="15" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF9F24"/>
+      <stop offset="1" stop-color="#D83B01"/>
+    </linearGradient>
+  </defs>
+  <circle cx="12.5" cy="12" r="7.2" fill="url(#hist_face)"/>
+  <path fill="url(#hist_ring)" d="M12.5 3a9 9 0 1 1-7.82 13.45 1.1 1.1 0 1 1 1.91-1.09A6.8 6.8 0 1 0 6.82 8.25H8.5a1 1 0 1 1 0 2H4.25a1.25 1.25 0 0 1-1.25-1.25V4.75a1 1 0 1 1 2 0v1.83A8.98 8.98 0 0 1 12.5 3Z"/>
+  <path fill="url(#hist_hands)" d="M12.5 7.25a1.1 1.1 0 0 1 1.1 1.1v3.22l2.35 1.35a1.1 1.1 0 1 1-1.1 1.9l-2.9-1.67a1.1 1.1 0 0 1-.55-.95V8.35a1.1 1.1 0 0 1 1.1-1.1Z"/>
+</svg>

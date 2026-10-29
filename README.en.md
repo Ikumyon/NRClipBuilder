@@ -1,74 +1,66 @@
 # NRClipBuilder
 
-A map preview, filtering, and exporting tool for GIS data (N05 / SHP / GeoJSON), built with PySide6.
-It allows you to filter railway line data drawn on the map by keywords or attributes, and export clipboard data for NIMBY Rails (`.nrclip`), or Overpass-style JSON that can be passed to Turnout (Rust version)'s `import_orm`.
+A railway GIS editor and NIMBY Rails exporter for Windows x64 and Ubuntu 24.04+ Linux x64.
 
-## Features
+## Running
 
-- **Import Various GIS Formats**:
-  - National Land Numerical Information (Japanese N05, etc.) ZIP files
-  - Shapefile (`.shp`)
-  - GeoJSON (`.geojson` / `.json`)
-  - **OpenStreetMap (OSM) Automated Import**: Automatically download and import railway line data within the selected Bounding Box (BBox) using the Overpass API.
-- **Multi-Layer Management**:
-  - Individually manage multiple imported GIS datasets in a layer tree.
-  - Supports changing overlay order via drag-and-drop, toggling visibility (show/hide), and deleting individual layers.
-- **Advanced Filtering**:
-  - OR/AND condition extraction based on attribute names, keywords, and exclusion keywords.
-  - Quick filtering via checkboxes for specific railway categories such as ordinary railway (Rail), Subway, Tram, Monorail, and Abandoned lines.
-  - Option to display/export only line data (LineString, etc.).
-- **Interactive Map Preview**:
-  - Interactive map preview using QWebEngineView and Leaflet.js.
-  - Background switching between GSI Map (Standard/Aerial) and OpenStreetMap (OSM).
-- **BBox Selection and History**:
-  - Click and drag on the map to select a Bounding Box (BBox) and clip coordinates.
-  - Save frequently used BBox coordinates in a history list for quick reuse.
-- **Multiple Export Formats**:
-  - GeoJSON
-  - Overpass-style JSON for Turnout
-  - **NIMBY Rails Clipboard Format (`.nrclip`)** direct export (zstd compression + automatic wyhash_nrc1 checksum calculation)
-- **Multi-language Support (i18n)**:
-  - Supports Japanese and English display switching.
-  - Language can be switched in real-time from the combo box in the upper-left of the application.
-  - By editing `ja.json` and `en.json` in the `localisation` folder at the same level as the executable, you can freely customize UI labels without rebuilding the application.
+Download `NRClipBuilder-windows-x64.zip` or `NRClipBuilder-linux-x64.tar.gz` from GitHub Release Assets, extract it and launch NRClipBuilder. No Python installation is required. Keep the entire extracted directory: distribution uses PyInstaller's onedir format.
 
-## Installation
+Import N05 ZIP, Shapefile and GeoJSON; filter attributes and railway types; select a BBox; draw and edit lines, bridges and tunnels; manage layers, opacity, history and languages; export GeoJSON, Turnout Overpass JSON or NIMBY Rails NRC1 model 226.
 
-On Windows, run the following batch file:
+Use Ctrl+Z to undo an edit. While drawing, right-click removes the last vertex; double-click or **Finish Line** commits the draft. Select a line layer or output history and a BBox before exporting. Leaflet is bundled; tiles, OSM and elevation require a network connection.
 
-```bat
-install_requirements.bat
+## Development
+
+Create a regular Python 3.14 virtual environment with `python -m venv --system-site-packages .venv` and activate it. Install Rust, Node.js 24 and a C/C++ toolchain (Visual Studio Build Tools on Windows, GCC on Linux), then run:
+
+```text
+python -m pip install -r packaging/requirements-build.txt
+npm --prefix src/web ci
+npm --prefix src/web run build
+python -m maturin develop --release --locked
+python -m nrclip_builder
 ```
 
-Or manually install dependencies in your virtual environment:
+Python dependencies generally allow updates within the same minor version (for example, `PySide6~=6.12.0` allows the 6.12 series). Rust and npm use caret ranges: the same major for versions 1 and above, or the same minor for 0.x dependencies. `Cargo.lock` and `package-lock.json` record resolved versions; update them with `cargo update` and `npm --prefix src/web update`.
 
-```bat
-python -m pip install -r requirements.txt
+File arguments are supported: `python -m nrclip_builder example.geojson`.
+
+```text
+cargo test --locked
+cargo clippy --locked --all-targets -- -D warnings
+cargo fmt --all --check
+npm --prefix src/web test
+npm --prefix src/web run format:check
+python -m unittest discover -s tests -v
+python -m PyInstaller --noconfirm --clean packaging/nrclip_builder.spec
 ```
 
-## Running the Application
+Packaged UI tests require QtWebEngine. Use `dist/NRClipBuilder/NRClipBuilder.exe --smoke-test` on Windows or `xvfb-run -a dist/NRClipBuilder/NRClipBuilder --smoke-test` on headless Linux. CI builds on each destination OS and checks packaged startup on Windows and Linux X11/Wayland.
 
-```bat
-run.bat
-```
+## Versions and releases
 
-Or run directly with Python:
+The application's version comes from `[package].version` in `src/native/Cargo.toml` and is embedded in the Rust extension at compile time. Development builds use `0.0.0-dev` (`0.0.0.dev0` in Python package metadata). The version is available through `python -m nrclip_builder --version`, the window title, Qt application metadata and Windows EXE properties, without Git or network access after distribution.
 
-```bat
-python nrclip_builder.py
-```
+1. Create and push a tag such as `v1.2.3` on the intended commit.
+2. Select that tag on GitHub's Releases page and manually publish a Release. For prereleases use `v1.2.3-alpha.1`, `v1.2.3-beta.1` or `v1.2.3-rc.1`, and select the prerelease option on GitHub.
+3. The `release: published` event starts Actions, which checks out the tag, sets its version without the leading `v` in the build checkout, and checks/builds both operating systems. No version changes are committed and dependencies are not updated.
+4. After both builds succeed, Actions attaches `NRClipBuilder-windows-x64.zip` and `NRClipBuilder-linux-x64.tar.gz` to that Release's Assets and verifies both files and their sizes. Archive names do not include the version.
 
-You can also open a data file directly by passing it as an argument:
+Pushes and pull requests only check, build and smoke-test development packages; they do not upload artifacts. Pushing a tag alone does not publish release packages. Assets are absent while the release build runs. Failed runs can be retried; same-name assets are replaced while the release description and publication status are preserved.
 
-```bat
-python nrclip_builder.py C:\path\to\N05-20_GML.zip
-```
+## Architecture and persistence
 
----
+`tests/` verifies versions and release assets. `packaging/` contains distribution settings, the application launcher, build dependencies, and version preparation/verification scripts.
 
-## Credits & License
+Python owns Qt presentation, application state/services, GIS import with pyshp/pyproj, and OSM networking. The required PyO3 Rust extension owns datasets, filters, clipping, topology, curves, Overpass/NRC1 export and all OS-specific operations. Long tasks run in workers; Rust computation detaches from Python. Immutable snapshots and shared unchanged features avoid repeated whole-dataset transfers.
 
-This project is a Python (PySide6) re-implementation and enhancement based on the data structure, checksum algorithm, and serialization logic of [Turnout](https://github.com/SuperManifolds/Turnout), a Rust-based tool developed by Alex Sørlie.
+The React/TypeScript map lives in `src/web/src/`, with CSS for presentation, a Leaflet controller and typed Qt WebChannel commands. Its static bundle is generated in `src/python/nrclip_builder/resources/map/` and included in wheels and desktop packages. Edit the sources and rebuild; do not edit generated assets. Node.js is only needed for development and CI.
 
-- Original Project: [Turnout](https://github.com/SuperManifolds/Turnout) (Copyright (c) 2025 Alex Sørlie, MIT License)
-- This software is released under the MIT License. See the `LICENSE` file for details.
+The map uses Qt WebChannel and incremental updates. The attribute table fetches pages of properties. Regex uses Rust `regex` syntax; unsupported lookarounds and backreferences produce errors. Shapefiles with PRJ are transformed to WGS84; files without PRJ are assumed WGS84. CPG determines DBF encoding; without CPG, UTF-8 and CP932 are tried.
+
+Settings, datasets, output history and unfinished drawing share one atomic `.userdata/session-v1.json` transaction under the application root: the checkout root during development, or the executable's folder in desktop packages, independent of the working directory. Browser previews also live in `.userdata/`. Rust resolves the location, sets the Windows hidden attribute and replaces files atomically. Failed saves preserve the previous file. Output history is added after a successful export. Previous implementations, settings and recovery formats have no compatibility path; existing user files are neither migrated nor deleted. Invalid new sessions are reported without being overwritten.
+
+## License
+
+MIT. See LICENSE and THIRD_PARTY_NOTICES.md. Portions of the Rust NRC1 and topology implementation are adapted from Alex Sørlie's [Turnout](https://github.com/SuperManifolds/Turnout). Leaflet's license is bundled.

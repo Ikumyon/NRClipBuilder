@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <defs>
+    <linearGradient id="mp_left" x1="3" y1="4" x2="9" y2="20" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#50E6FF"/>
+      <stop offset="1" stop-color="#0094F0"/>
+    </linearGradient>
+    <linearGradient id="mp_mid" x1="9" y1="4" x2="15" y2="20" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0094F0"/>
+      <stop offset="1" stop-color="#1E50A2"/>
+    </linearGradient>
+    <linearGradient id="mp_right" x1="15" y1="4" x2="21" y2="20" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#36DFF1"/>
+      <stop offset="1" stop-color="#0078D4"/>
+    </linearGradient>
+    <linearGradient id="mp_badge" x1="13" y1="13" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#52E580"/>
+      <stop offset="1" stop-color="#107C41"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#mp_left)" d="M8.75 3.35 3.83 5.6A1.5 1.5 0 0 0 3 6.96v11.6a1.25 1.25 0 0 0 1.77 1.14L8.75 17.9V3.35Z"/>
+  <path fill="url(#mp_mid)" d="M8.75 3.35v14.55l6.5 2.75V6.1l-6.5-2.75Z"/>
+  <path fill="url(#mp_right)" d="M15.25 6.1v14.55l4.92-2.25A1.5 1.5 0 0 0 21 17.04V5.44a1.25 1.25 0 0 0-1.77-1.14L15.25 6.1Z"/>
+  <circle cx="17.5" cy="17.5" r="5" fill="url(#mp_badge)"/>
+  <path fill="#FFFFFF" d="M17.5 14.5a.9.9 0 0 1 .9.9v1.2h1.2a.9.9 0 1 1 0 1.8h-1.2v1.2a.9.9 0 1 1-1.8 0v-1.2h-1.2a.9.9 0 1 1 0-1.8h1.2v-1.2a.9.9 0 0 1 .9-.9Z"/>
+</svg>

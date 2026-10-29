@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <defs>
+    <linearGradient id="lay_bot" x1="3" y1="14" x2="21" y2="21" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6E56CF"/>
+      <stop offset="1" stop-color="#3B2E91"/>
+    </linearGradient>
+    <linearGradient id="lay_mid" x1="3" y1="9" x2="21" y2="17" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#29C3FF"/>
+      <stop offset="1" stop-color="#0067C0"/>
+    </linearGradient>
+    <linearGradient id="lay_top" x1="4" y1="3" x2="20" y2="12" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7CECFF"/>
+      <stop offset="0.5" stop-color="#36DFF1"/>
+      <stop offset="1" stop-color="#0094F0"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#lay_bot)" d="M11.16 14.38a2 2 0 0 1 1.68 0l8.42 3.83a1.1 1.1 0 0 1 0 2l-8.42 3.83a2 2 0 0 1-1.68 0l-8.42-3.83a1.1 1.1 0 0 1 0-2l8.42-3.83Z"/>
+  <path fill="url(#lay_mid)" d="M11.16 9.38a2 2 0 0 1 1.68 0l8.42 3.83a1.1 1.1 0 0 1 0 2l-8.42 3.83a2 2 0 0 1-1.68 0L2.74 15.2a1.1 1.1 0 0 1 0-2l8.42-3.83Z"/>
+  <path fill="url(#lay_top)" d="M11.16 2.18a2 2 0 0 1 1.68 0l8.42 3.83a1.1 1.1 0 0 1 0 2l-8.42 3.83a2 2 0 0 1-1.68 0L2.74 8.01a1.1 1.1 0 0 1 0-2l8.42-3.83Z"/>
+</svg>

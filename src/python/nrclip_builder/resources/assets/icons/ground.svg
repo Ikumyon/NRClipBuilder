@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <defs>
+    <linearGradient id="ground_soil" x1="3" y1="14" x2="21" y2="22" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#D99A58"/>
+      <stop offset="1" stop-color="#92552E"/>
+    </linearGradient>
+    <linearGradient id="ground_grass" x1="2" y1="11" x2="22" y2="15" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#9CE45B"/>
+      <stop offset="1" stop-color="#238B45"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#ground_soil)" d="M2 13h20v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z"/>
+  <rect x="2" y="11" width="20" height="4" rx="1.5" fill="url(#ground_grass)"/>
+  <path stroke="#C9D9E8" stroke-width="2" stroke-linecap="round" d="M8 3 6 11M16 3l2 8"/>
+  <path stroke="#768CA0" stroke-width="1.5" stroke-linecap="round" d="M7.5 5h9M7 8h10"/>
+  <path stroke="#F2C18C" stroke-width="1.5" stroke-linecap="round" d="M6 18h2m6 0h3"/>
+</svg>

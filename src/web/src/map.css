@@ -1,0 +1,45 @@
+html,
+body,
+#root,
+#map {
+  height: 100%;
+  margin: 0;
+  font: 13px sans-serif;
+}
+#controls {
+  position: absolute;
+  z-index: 1000;
+  top: 12px;
+  left: 55px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+#controls button,
+#hint {
+  background: white;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  padding: 7px 10px;
+}
+#controls button[aria-pressed="true"] {
+  background: #fff3bf;
+}
+#controls button:disabled {
+  color: #868e96;
+}
+.vertex {
+  background: #fff;
+  border: 2px solid #1971c2;
+  border-radius: 50%;
+}
+.bbox-handle {
+  background: #fff;
+  border: 2px solid #f08c00;
+}
+.leaflet-tooltip {
+  white-space: pre-line;
+}
+.leaflet-container {
+  background: #e9ecef;
+}
