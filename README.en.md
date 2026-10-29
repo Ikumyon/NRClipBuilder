@@ -1,16 +1,27 @@
 # NRClipBuilder
 
+[日本語](README.md)
+
 A railway GIS editor and NIMBY Rails exporter for Windows x64 and Ubuntu 24.04+ Linux x64.
 
 ## Running
 
-Download `NRClipBuilder-windows-x64.zip` or `NRClipBuilder-linux-x64.tar.gz` from GitHub Release Assets, extract it and launch NRClipBuilder. No Python installation is required. Keep the entire extracted directory: distribution uses PyInstaller's onedir format.
+Ready-to-run packages are available from [GitHub Release Assets](https://github.com/Ikumyon/NRClipBuilder/releases). No Python installation is required. Extract the ZIP or tar.gz, keep the entire directory and launch NRClipBuilder.
+
+The instructions below explain how to run, modify and build the application from source.
 
 Import N05 ZIP, Shapefile and GeoJSON; filter attributes and railway types; select a BBox; draw and edit lines, bridges and tunnels; manage layers, opacity, history and languages; export GeoJSON, Turnout Overpass JSON or NIMBY Rails NRC1 model 226.
 
 Use Ctrl+Z to undo an edit. While drawing, right-click removes the last vertex; double-click or **Finish Line** commits the draft. Select a line layer or output history and a BBox before exporting. Leaflet is bundled; tiles, OSM and elevation require a network connection.
 
-## Development
+## Running from source
+
+Download and extract the source using GitHub's **Code → Download ZIP**, or clone the repository. Run the remaining commands from the project root.
+
+```text
+git clone https://github.com/Ikumyon/NRClipBuilder.git
+cd NRClipBuilder
+```
 
 Create a regular Python 3.14 virtual environment with `python -m venv --system-site-packages .venv` and activate it. Install Rust, Node.js 24 and a C/C++ toolchain (Visual Studio Build Tools on Windows, GCC on Linux), then run:
 
@@ -26,6 +37,12 @@ Python dependencies generally allow updates within the same minor version (for e
 
 File arguments are supported: `python -m nrclip_builder example.geojson`.
 
+## Making changes and building
+
+Restart the application after changing Python code. After changing the map UI, run `npm --prefix src/web run build`. After changing Rust code, run `python -m maturin develop --release --locked` before restarting.
+
+Use the following commands to check your changes and build a standalone application. Build Windows packages on Windows and Linux packages on Linux.
+
 ```text
 cargo test --locked
 cargo clippy --locked --all-targets -- -D warnings
@@ -36,20 +53,13 @@ python -m unittest discover -s tests -v
 python -m PyInstaller --noconfirm --clean packaging/nrclip_builder.spec
 ```
 
-Packaged UI tests require QtWebEngine. Use `dist/NRClipBuilder/NRClipBuilder.exe --smoke-test` on Windows or `xvfb-run -a dist/NRClipBuilder/NRClipBuilder --smoke-test` on headless Linux. CI builds on each destination OS and checks packaged startup on Windows and Linux X11/Wayland.
+The standalone application is generated in `dist/NRClipBuilder/`. Keep this entire directory, including the files alongside the executable.
 
-## Versions and releases
+Packaged UI tests require QtWebEngine. Use `dist/NRClipBuilder/NRClipBuilder.exe --smoke-test` on Windows or `xvfb-run -a dist/NRClipBuilder/NRClipBuilder --smoke-test` on headless Linux.
 
-The application's version comes from `[package].version` in `src/native/Cargo.toml` and is embedded in the Rust extension at compile time. Development builds use `0.0.0-dev` (`0.0.0.dev0` in Python package metadata). The version is available through `python -m nrclip_builder --version`, the window title, Qt application metadata and Windows EXE properties, without Git or network access after distribution.
+Source builds use version `0.0.0-dev`. Check it with `python -m nrclip_builder --version`.
 
-1. Create and push a tag such as `v1.2.3` on the intended commit.
-2. Select that tag on GitHub's Releases page and manually publish a Release. For prereleases use `v1.2.3-alpha.1`, `v1.2.3-beta.1` or `v1.2.3-rc.1`, and select the prerelease option on GitHub.
-3. The `release: published` event starts Actions, which checks out the tag, sets its version without the leading `v` in the build checkout, and checks/builds both operating systems. No version changes are committed and dependencies are not updated.
-4. After both builds succeed, Actions attaches `NRClipBuilder-windows-x64.zip` and `NRClipBuilder-linux-x64.tar.gz` to that Release's Assets and verifies both files and their sizes. Archive names do not include the version.
-
-Pushes and pull requests only check, build and smoke-test development packages; they do not upload artifacts. Pushing a tag alone does not publish release packages. Assets are absent while the release build runs. Failed runs can be retried; same-name assets are replaced while the release description and publication status are preserved.
-
-## Architecture and persistence
+## Code structure and persistence
 
 `tests/` verifies versions and release assets. `packaging/` contains distribution settings, the application launcher, build dependencies, and version preparation/verification scripts.
 

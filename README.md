@@ -1,10 +1,14 @@
 # NRClipBuilder
 
+[English](README.en.md)
+
 Windows x64／Ubuntu 24.04以降のLinux x64向けの、鉄道GIS編集・NIMBY Railsエクスポート用デスクトップアプリです。
 
 ## 利用
 
-GitHub ReleasesのAssetsから`NRClipBuilder-windows-x64.zip`または`NRClipBuilder-linux-x64.tar.gz`をダウンロードし、展開してNRClipBuilderを起動します。Pythonのインストールは不要です。配布物はonedir形式のため、実行ファイルだけでなく展開したフォルダー全体が必要です。
+配布版は[GitHub Releases](https://github.com/Ikumyon/NRClipBuilder/releases)のAssetsからダウンロードできます。Pythonのインストールは不要です。ZIP／tar.gzを展開し、フォルダー全体を保持してNRClipBuilderを起動してください。
+
+以下では、ソースコードから起動し、変更やビルドを行うための手順を説明します。
 
 - N05 ZIP、Shapefile、GeoJSONを読み込み、属性・鉄道種別・BBoxで絞り込みます。
 - Leaflet地図で線を描画し、頂点、地上／橋／トンネルを編集できます。Ctrl+Zで編集単位を元に戻します。描画中は右クリックで最後の点を取り消し、ダブルクリックまたは「線を確定」で保存します。
@@ -12,7 +16,14 @@ GitHub ReleasesのAssetsから`NRClipBuilder-windows-x64.zip`または`NRClipBui
 - GeoJSON、Turnout向けOverpass JSON、NIMBY RailsのNRC1形式（モデル226）を出力します。書出しは選択レイヤーとBBoxに対して行います。
 - Leaflet本体を同梱しています。背景タイル、OSM取得、標高取得にはネットワークが必要です。
 
-## 開発
+## ソースから起動する
+
+GitHubの「Code → Download ZIP」からソースコードをダウンロードして展開するか、次のコマンドで取得します。以降のコマンドはプロジェクトのルートで実行してください。
+
+```text
+git clone https://github.com/Ikumyon/NRClipBuilder.git
+cd NRClipBuilder
+```
 
 Python 3.14の通常版、Rust、Node.js 24、C/C++ビルド環境を用意し、グローバルのパッケージを継承する仮想環境（`python -m venv --system-site-packages .venv`）を作成し、有効にして実行します。WindowsのC/C++ビルドにはVisual Studio Build Tools、LinuxにはGCC等が必要です。
 
@@ -28,6 +39,12 @@ Python依存は原則として同じマイナーバージョン内の更新を�
 
 データファイルを引数として渡せます。`python -m nrclip_builder example.geojson`
 
+## 変更とビルド
+
+Pythonのコードを変更したら、アプリを再起動します。地図UIを変更したら`npm --prefix src/web run build`、Rustのコードを変更したら`python -m maturin develop --release --locked`を実行してから起動してください。
+
+変更を確認するためのテストと、配布用アプリのビルドは次のコマンドで実行できます。Windows向けはWindows、Linux向けはLinuxでビルドしてください。
+
 ```text
 cargo test --locked
 cargo clippy --locked --all-targets -- -D warnings
@@ -38,20 +55,13 @@ python -m unittest discover -s tests -v
 python -m PyInstaller --noconfirm --clean packaging/nrclip_builder.spec
 ```
 
-配布物の画面テストには動作するQtWebEngine環境が必要です。Windowsは`dist/NRClipBuilder/NRClipBuilder.exe --smoke-test`、Linuxのヘッドレス実行は`xvfb-run -a dist/NRClipBuilder/NRClipBuilder --smoke-test`を使用します。GitHub ActionsではWindowsとLinuxの実機形式でビルドし、LinuxのX11／Waylandと配布物の起動を検証します。
+配布用アプリは`dist/NRClipBuilder/`に生成されます。実行ファイルだけでなく、このフォルダー全体が必要です。
 
-## バージョンとリリース
+配布物の画面テストには動作するQtWebEngine環境が必要です。Windowsは`dist/NRClipBuilder/NRClipBuilder.exe --smoke-test`、Linuxのヘッドレス実行は`xvfb-run -a dist/NRClipBuilder/NRClipBuilder --smoke-test`を使用します。
 
-本体のバージョンは`src/native/Cargo.toml`の`[package].version`を参照し、Rust拡張にコンパイル時に埋め込みます。開発中は`0.0.0-dev`（Pythonパッケージでは`0.0.0.dev0`）です。`python -m nrclip_builder --version`、ウィンドウタイトル、Qtのアプリ情報、Windows EXEのプロパティで確認できます。配布後のバージョン取得にはGitやネット接続は必要ありません。
+ソースからのビルドでは、バージョンは`0.0.0-dev`です。`python -m nrclip_builder --version`で確認できます。
 
-1. リリースするコミットに`v1.2.3`などのタグを作成し、pushします。
-2. GitHubのReleases画面でそのタグを選択し、Releaseを手動公開します。プレリリースは`v1.2.3-alpha.1`、`v1.2.3-beta.1`、`v1.2.3-rc.1`の形式を使い、GitHub側でもプレリリースを選択します。
-3. `release: published`を受けたActionsがタグのソースを取得し、先頭の`v`を外したバージョンをビルド用チェックアウトに設定して、両OSの検証・ビルドを行います。ソースへの自動コミットや依存ライブラリの更新は行いません。
-4. 両OSの成功後、そのReleaseのAssetsに`NRClipBuilder-windows-x64.zip`と`NRClipBuilder-linux-x64.tar.gz`を添付し、両ファイルの存在とサイズを検証します。ファイル名にバージョンは付けません。
-
-push・PRでは開発版の検証と配布物のビルド・起動確認だけを行い、成果物をアップロードしません。タグのpushだけではリリース配布物を公開しません。公開直後からビルド完了まではAssetsが未添付です。失敗した場合はActionsを再実行できます。同名Assetsは置き換えられ、Releaseの本文・公開区分は維持されます。
-
-## 設計
+## コード構成
 
 - `src/python/nrclip_builder/`：画面、アプリ状態、サービス、GIS読込・OSM通信。
 - `src/native/src/`：型付きデータセット、検索・クリップ、路線接続・曲線計算、NRC1変換、OS固有処理。
