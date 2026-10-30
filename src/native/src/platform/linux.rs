@@ -6,24 +6,9 @@ use std::{ffi::OsString, path::Path, time::Duration};
 use super::startup::{GraphicsMode, READY_ENV, supervise};
 
 pub fn initialize(py: Python<'_>) -> Result<()> {
-    // Respect explicit Qt configuration. Otherwise use the desktop's IM server,
-    // rather than XCB's compose-only default, which cannot convert Japanese.
-    if std::env::var_os("QT_IM_MODULE").is_none() && std::env::var_os("QT_IM_MODULES").is_none() {
-        let modifiers = std::env::var("XMODIFIERS").unwrap_or_default();
-        let module = if modifiers.contains("@im=fcitx") {
-            Some("fcitx")
-        } else if modifiers.contains("@im=ibus") {
-            Some("ibus")
-        } else {
-            None
-        };
-        if let Some(module) = module {
-            py.import("os")?
-                .getattr("environ")?
-                .set_item("QT_IM_MODULE", module)?;
-        }
-    }
-    Ok(())
+    // Qt can prefer QT_IM_MODULES over QT_IM_MODULE. Keep both consistent with
+    // the explicit single-module choice, or with the desktop's input server.
+    super::linux_input::initialize(py)
 }
 
 pub fn supervise_startup(py: Python<'_>) -> Result<(bool, Option<i32>)> {

@@ -8,7 +8,7 @@ A railway GIS editor and NIMBY Rails exporter for Windows x64 and Ubuntu 24.04+ 
 
 Ready-to-run packages are available from [GitHub Release Assets](https://github.com/Ikumyon/NRClipBuilder/releases). No Python installation is required. Extract the ZIP or tar.gz, keep the entire directory and launch NRClipBuilder.
 
-Linux packages include a Fcitx 4/5 input plugin built against the bundled Qt. The desktop still needs a running Fcitx service and an input engine such as Mozc. If neither `QT_IM_MODULE` nor `QT_IM_MODULES` is set, Rust selects the input method specified by `XMODIFIERS`.
+Linux packages include a Fcitx 4/5 input plugin built against the bundled Qt. The desktop still needs a running Fcitx service and an input engine such as Mozc. Rust honors an explicit `QT_IM_MODULE`, or otherwise selects Fcitx/IBus from `XMODIFIERS`. It sets `QT_IM_MODULES` to the same value so conflicting settings cannot select a different input method. Without either selection, Qt keeps its own input-method choice.
 
 Elevation is requested when the pointer stops over the map. A separate map field displays the coordinates and error details for network errors, HTTP failures, five-second timeouts, missing coverage, and invalid responses, including while selecting a BBox.
 

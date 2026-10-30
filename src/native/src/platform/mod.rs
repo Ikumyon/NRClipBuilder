@@ -12,6 +12,8 @@ mod os;
 #[path = "windows.rs"]
 mod os;
 
+#[cfg(any(target_os = "linux", test))]
+mod linux_input;
 pub(crate) mod startup;
 pub use os::{bundle_library, initialize, startup_ready, supervise_startup};
 

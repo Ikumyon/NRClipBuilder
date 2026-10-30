@@ -8,7 +8,7 @@ Windows x64／Ubuntu 24.04以降のLinux x64向けの、鉄道GIS編集・NIMBY 
 
 配布版は[GitHub Releases](https://github.com/Ikumyon/NRClipBuilder/releases)のAssetsからダウンロードできます。Pythonのインストールは不要です。ZIP／tar.gzを展開し、フォルダー全体を保持してNRClipBuilderを起動してください。
 
-Linux配布版には同梱Qtに合わせてビルドしたFcitx 4／5の入力プラグインを含めます。日本語入力にはMint側でFcitxとMozcなどの入力エンジンが動作している必要があります。`QT_IM_MODULE`／`QT_IM_MODULES`が未指定の場合は、Rust側で`XMODIFIERS`の指定に合わせて入力方式を選択します。
+Linux配布版には同梱Qtに合わせてビルドしたFcitx 4／5の入力プラグインを含めます。日本語入力にはMint側でFcitxとMozcなどの入力エンジンが動作している必要があります。Rust側で`QT_IM_MODULE`の明示指定を優先し、未指定なら`XMODIFIERS`のFcitx／IBus指定に合わせて入力方式を選択します。`QT_IM_MODULES`も同じ値に揃え、競合する設定で別の入力方式が選ばれることを防ぎます。いずれも指定がなければQtの選択を維持します。
 
 標高はマウスを地図上で止めると取得します。取得できない場合は、地図上の専用欄に座標とエラー内容を表示します。通信エラー、HTTPの失敗応答、5秒のタイムアウト、データ範囲外、不正な応答を区別し、BBox選択中も表示を維持します。
 
