@@ -50,6 +50,8 @@ export function createMapController(
     structure: Structure = "ground";
   let points: Position[] = [],
     segments: Draft["segments"] = [];
+  let drawCursor: L.LatLng | null = null,
+    drawPreview: L.Polyline | null = null;
   let strings: Strings = {},
     initializedView = false,
     hint = "";
@@ -311,6 +313,7 @@ export function createMapController(
 
   function toggleBBox() {
     selecting = !selecting;
+    renderDrawPreview();
     setHint(
       selecting ? label("map_select_btn_active", "Drag to select BBox") : "",
     );
@@ -379,6 +382,22 @@ export function createMapController(
       }).addTo(drawing);
     for (const p of points)
       L.circleMarker(latlng(p), { radius: 4, color: "#d6336c" }).addTo(drawing);
+    renderDrawPreview();
+  }
+  function renderDrawPreview() {
+    if (!drawMode || selecting || !points.length || !drawCursor) {
+      if (drawPreview) map.removeLayer(drawPreview);
+      drawPreview = null;
+      return;
+    }
+    const coordinates = [latlng(points.at(-1)!), nearestPoint(drawCursor)];
+    const options: L.PolylineOptions = {
+      color: color({ layer: { ground: 0, bridge: 1, tunnel: -1 }[structure] }),
+      weight: 4,
+      interactive: false,
+    };
+    if (drawPreview) drawPreview.setLatLngs(coordinates).setStyle(options);
+    else drawPreview = L.polyline(coordinates, options).addTo(map);
   }
   function draftChanged() {
     renderDraft();
@@ -386,6 +405,7 @@ export function createMapController(
   }
   map.on("click", (event) => {
     if (!drawMode || selecting) return;
+    drawCursor = event.latlng;
     const p = coordinate(nearestPoint(event.latlng));
     if (points.length && map.distance(latlng(points.at(-1)!), latlng(p)) < 0.05)
       return;
@@ -399,11 +419,21 @@ export function createMapController(
   });
   map.on("contextmenu", (event) => {
     if (drawMode) {
+      drawCursor = event.latlng;
       L.DomEvent.preventDefault(event.originalEvent);
       points.pop();
       segments.pop();
       draftChanged();
     }
+  });
+  map.on("mousemove", (event) => {
+    if (!drawMode) return;
+    drawCursor = event.latlng;
+    renderDrawPreview();
+  });
+  map.on("mouseout", () => {
+    drawCursor = null;
+    renderDrawPreview();
   });
   let viewTimer: ReturnType<typeof setTimeout> | undefined;
   map.on("moveend", () => {
@@ -489,10 +519,13 @@ export function createMapController(
     if (message.type === "update") update(message.payload);
     if (message.type === "draw") {
       drawMode = message.active;
+      if (!drawMode) drawCursor = null;
+      renderDrawPreview();
       vertices.clearLayers();
     }
     if (message.type === "structure") {
       structure = message.value;
+      renderDrawPreview();
       if (editTarget) {
         const props = editTarget.feature.properties;
         delete props.bridge;
