@@ -7,6 +7,7 @@ mod hobby;
 mod import;
 mod nrc1;
 mod platform;
+mod tiles;
 mod types;
 mod wire;
 mod wyhash_nrc1;
@@ -104,6 +105,25 @@ impl Engine {
         let indices = (0..data.entries.len()).collect();
         Ok(Selection {
             inner: SelectionData { data, indices },
+        })
+    }
+    fn prepare_export(
+        &self,
+        ids: Vec<String>,
+        filters: String,
+        bbox: Option<[f64; 4]>,
+    ) -> PyResult<ExportBatch> {
+        let filter =
+            serde_json::from_str(&filters).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let sources = ids
+            .into_iter()
+            .map(|id| self.get(&id).map(|data| (id, data)))
+            .collect::<PyResult<_>>()?;
+        Ok(ExportBatch {
+            sources,
+            filter,
+            bbox,
+            history: None,
         })
     }
     fn edit_many(
@@ -214,35 +234,85 @@ impl Selection {
         py.detach(|| self.inner.geojson(Some(bbox), &token.inner))
             .map_err(error)
     }
+}
+
+/// Immutable input captured when an export dialog opens. Filtering happens on the worker.
+#[pyclass]
+struct ExportBatch {
+    sources: Vec<(String, Arc<Dataset>)>,
+    filter: Filter,
+    bbox: Option<[f64; 4]>,
+    history: Option<String>,
+}
+
+#[pymethods]
+impl ExportBatch {
+    #[staticmethod]
+    fn from_history(geojson: String, bbox: [f64; 4]) -> Self {
+        Self {
+            sources: Vec::new(),
+            filter: Filter::default(),
+            bbox: Some(bbox),
+            history: Some(geojson),
+        }
+    }
+
     fn export(
         &self,
         py: Python<'_>,
         format: &str,
         options: String,
         token: CancelToken,
-    ) -> PyResult<Py<PyBytes>> {
-        let opts: import::ExportOptions =
-            serde_json::from_str(&options).map_err(|e| PyValueError::new_err(e.to_string()))?;
-        let bytes = py
-            .detach(|| -> anyhow::Result<Vec<u8>> {
-                opts.validate()?;
-                let features = self.inner.features(opts.bbox, &token.inner)?;
-                anyhow::ensure!(!features.is_empty(), "No features in the export range");
-                match format {
-                    "geojson" => Ok(serde_json::to_vec(
-                        &serde_json::json!({"type":"FeatureCollection","features":features}),
-                    )?),
-                    "overpass" => Ok(export::overpass(&features, &token.inner)?.into_bytes()),
-                    "nrclip" => import::convert(
-                        &export::overpass(&features, &token.inner)?,
-                        &opts,
+    ) -> PyResult<(Py<PyBytes>, String)> {
+        let (bytes, geojson) = py
+            .detach(|| -> anyhow::Result<_> {
+                let bbox = self
+                    .bbox
+                    .ok_or_else(|| anyhow::anyhow!("Select a BBox before exporting"))?;
+                geometry::validate_bbox(bbox)?;
+                let mut features = Vec::new();
+                if let Some(raw) = &self.history {
+                    let value: serde_json::Value = serde_json::from_str(raw)?;
+                    let data =
+                        Dataset::parse(&serde_json::to_string(&value["features"])?, &token.inner)?;
+                    features = export::line_features(
+                        &SelectionData {
+                            indices: (0..data.entries.len()).collect(),
+                            data: Arc::new(data),
+                        },
+                        bbox,
                         &token.inner,
-                    ),
-                    _ => anyhow::bail!("Unknown export format"),
+                    )?;
+                } else {
+                    for (id, data) in &self.sources {
+                        token.inner.check()?;
+                        let indices = data.select(&self.filter, &token.inner)?;
+                        let selection = SelectionData {
+                            data: Arc::clone(data),
+                            indices,
+                        };
+                        for mut feature in export::line_features(&selection, bbox, &token.inner)? {
+                            feature
+                                .properties
+                                .insert("source_id".into(), serde_json::json!(feature.id));
+                            feature
+                                .properties
+                                .insert("source_layer".into(), serde_json::json!(id));
+                            feature.id = serde_json::to_string(&(id, &feature.id))?;
+                            features.push(feature);
+                        }
+                    }
                 }
+                anyhow::ensure!(!features.is_empty(), "No railway lines in the export range");
+                let geojson = serde_json::to_string(
+                    &serde_json::json!({"type":"FeatureCollection", "features":features}),
+                )?;
+                let bytes = export::convert(format, &options, &features, &token.inner)?;
+                token.inner.check()?;
+                Ok((bytes, geojson))
             })
             .map_err(error)?;
-        Ok(PyBytes::new(py, &bytes).unbind())
+        Ok((PyBytes::new(py, &bytes).unbind(), geojson))
     }
 }
 
@@ -293,6 +363,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_class::<Engine>()?;
     m.add_class::<Selection>()?;
+    m.add_class::<ExportBatch>()?;
     m.add_class::<CancelToken>()?;
     m.add_function(wrap_pyfunction!(data_directory, m)?)?;
     m.add_function(wrap_pyfunction!(system_locale, m)?)?;

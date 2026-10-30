@@ -12,9 +12,36 @@ class StructureSelector(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("structureSelector")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet("""
+            QWidget#structureSelector {
+                background-color: palette(alternate-base);
+                border: 1px solid palette(mid);
+                border-radius: 6px;
+            }
+            QWidget#structureSelector QToolButton {
+                background-color: transparent;
+                border: none;
+                border-radius: 4px;
+                padding: 0;
+            }
+            QWidget#structureSelector QToolButton:hover {
+                background-color: palette(button);
+            }
+            QWidget#structureSelector QToolButton:checked,
+            QWidget#structureSelector QToolButton:checked:hover {
+                background-color: palette(highlight);
+            }
+            QWidget#structureSelector QToolButton:focus {
+                border: 1px solid palette(highlight);
+            }
+            QWidget#structureSelector QToolButton:disabled:checked {
+                background-color: palette(midlight);
+            }
+        """)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(4, 0, 4, 0)
+        layout.setContentsMargins(2, 2, 2, 2)
         layout.setSpacing(0)
         self.group = QButtonGroup(self)
         self.group.setExclusive(True)
@@ -30,7 +57,7 @@ class StructureSelector(QWidget):
             button.setCheckable(True)
             button.setIcon(icon(asset))
             button.setIconSize(ICON_SIZE)
-            button.setFixedSize(36, 32)
+            button.setFixedSize(36, 28)
             button.installEventFilter(self)
             self.group.addButton(button, index)
             self.buttons[value] = button

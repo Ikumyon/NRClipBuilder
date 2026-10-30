@@ -27,7 +27,3 @@ include = [
   { path = "src/web/**/*", format = "sdist" }
 ]
 exclude = ["src/web/node_modules/**/*", "**/*.pdb"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-

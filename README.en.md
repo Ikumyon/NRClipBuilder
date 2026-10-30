@@ -10,7 +10,7 @@ Ready-to-run packages are available from [GitHub Release Assets](https://github.
 
 The instructions below explain how to run, modify and build the application from source.
 
-Import N05 ZIP, Shapefile and GeoJSON; filter attributes and railway types; select a BBox; draw and edit lines, bridges and tunnels; manage layers, opacity, history and languages; export GeoJSON, Turnout Overpass JSON or NIMBY Rails NRC1 model 226.
+Import N05 ZIP, Shapefile and GeoJSON; filter attributes and railway types; select a BBox; draw and edit lines, bridges and tunnels; manage layers, opacity, history and languages; export GeoJSON, Turnout Overpass JSON, NIMBY Rails NRC1 model 226 or PMTiles.
 
 Use Ctrl+Z to undo an edit. While drawing, right-click removes the last vertex; double-click or **Finish Line** commits the draft. Select a line layer or output history and a BBox before exporting. Leaflet is bundled; tiles, OSM and elevation require a network connection.
 
@@ -49,7 +49,6 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo fmt --all --check
 npm --prefix src/web test
 npm --prefix src/web run format:check
-python -m unittest discover -s tests -v
 python -m PyInstaller --noconfirm --clean packaging/nrclip_builder.spec
 ```
 
@@ -59,9 +58,21 @@ Packaged UI tests require QtWebEngine. Use `dist/NRClipBuilder/NRClipBuilder.exe
 
 Source builds use version `0.0.0-dev`. Check it with `python -m nrclip_builder --version`.
 
+## Export
+
+Open **File → Export…** to export all checked data layers into one file, using the current filters and BBox. Background maps and the history layer are excluded. Inputs are captured when the dialog opens. Choose the NRC1, PMTiles, GeoJSON or Turnout JSON tab, enter a destination, and export. Settings are retained across tabs and saved with the last selected format in the session. NRC1 scale and curve settings apply only to NRC1. PMTiles defaults to zoom 0–14 and accepts zooms 0–22.
+
+**Export again…** in the History tab uses the selected entry's saved data and BBox, independently of current filters and checked layers. History is added only after the output file is committed successfully.
+
+### PMTiles in NIMBY Rails
+
+PMTiles provides a background railway map. To export playable tracks, choose NRC1 instead. In NIMBY Rails 1.19 or later, open **Map options → Sources → New source**, add the exported local `.pmtiles` map source, and use a style that displays OpenMapTiles railways. The source layer is `transportation`, with `class=rail` and the railway type in `subclass`. Bridges have `brunnel=bridge`, tunnels have `brunnel=tunnel`, and ground lines omit `brunnel`. Colors and line styles depend on the game style; this application does not generate a style mod.
+
+The output is PMTiles v3 with gzip-compressed MVT, generated without external commands. Maximum zoom preserves geometry apart from quantization; lower zooms are simplified. Missing structure information is treated as ground and is never inferred. Attributes follow the [OpenMapTiles transportation schema](https://github.com/openmaptiles/openmaptiles/blob/master/layers/transportation/transportation.yaml) (schema: CC-BY). Source data licensing and attribution remain applicable.
+
 ## Code structure and persistence
 
-`tests/` verifies versions and release assets. `packaging/` contains distribution settings, the application launcher, build dependencies, and version preparation/verification scripts.
+`packaging/` contains distribution settings, the application launcher, build dependencies, and version preparation/verification scripts.
 
 Python owns Qt presentation, application state/services, GIS import with pyshp/pyproj, and OSM networking. The required PyO3 Rust extension owns datasets, filters, clipping, topology, curves, Overpass/NRC1 export and all OS-specific operations. Long tasks run in workers; Rust computation detaches from Python. Immutable snapshots and shared unchanged features avoid repeated whole-dataset transfers.
 

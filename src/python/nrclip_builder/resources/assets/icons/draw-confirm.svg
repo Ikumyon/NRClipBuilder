@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <defs>
+    <linearGradient id="line" x1="3" y1="4" x2="18" y2="19" gradientUnits="userSpaceOnUse"><stop stop-color="#50E6FF"/><stop offset=".5" stop-color="#0094F0"/><stop offset="1" stop-color="#2052CB"/></linearGradient>
+    <linearGradient id="badge" x1="14" y1="13" x2="22" y2="22" gradientUnits="userSpaceOnUse"><stop stop-color="#52E580"/><stop offset="1" stop-color="#107C41"/></linearGradient>
+  </defs>
+  <path stroke="url(#line)" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round" d="m3.5 17 4-10 5.5 4 4.5-7.5"/>
+  <circle cx="3.5" cy="17" r="2.3" fill="#0078D4"/><circle cx="7.5" cy="7" r="2.3" fill="#29C3FF"/><circle cx="13" cy="11" r="2.3" fill="#0094F0"/><circle cx="17.5" cy="3.5" r="2.3" fill="#36DFF1"/>
+  <circle cx="17.5" cy="17.5" r="5" fill="url(#badge)"/>
+  <path stroke="white" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" d="m14.8 17.5 1.8 1.9 3.7-3.8"/>
+</svg>

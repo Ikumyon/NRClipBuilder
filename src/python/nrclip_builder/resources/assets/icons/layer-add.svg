@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <defs>
+    <linearGradient id="bottom" x1="3" y1="13" x2="20" y2="22" gradientUnits="userSpaceOnUse"><stop stop-color="#6E56CF"/><stop offset="1" stop-color="#3B2E91"/></linearGradient>
+    <linearGradient id="middle" x1="3" y1="9" x2="20" y2="18" gradientUnits="userSpaceOnUse"><stop stop-color="#29C3FF"/><stop offset="1" stop-color="#0067C0"/></linearGradient>
+    <linearGradient id="top" x1="4" y1="2" x2="19" y2="12" gradientUnits="userSpaceOnUse"><stop stop-color="#7CECFF"/><stop offset=".5" stop-color="#36DFF1"/><stop offset="1" stop-color="#0094F0"/></linearGradient>
+    <linearGradient id="badge" x1="14" y1="13" x2="22" y2="22" gradientUnits="userSpaceOnUse"><stop stop-color="#52E580"/><stop offset="1" stop-color="#107C41"/></linearGradient>
+  </defs>
+  <path fill="url(#bottom)" d="m11.2 12.8-8.5 3.9a1.1 1.1 0 0 0 0 2l8.5 3.9a2 2 0 0 0 1.6 0l8.5-3.9a1.1 1.1 0 0 0 0-2l-8.5-3.9a2 2 0 0 0-1.6 0Z"/>
+  <path fill="url(#middle)" d="m11.2 7.8-8.5 3.9a1.1 1.1 0 0 0 0 2l8.5 3.9a2 2 0 0 0 1.6 0l8.5-3.9a1.1 1.1 0 0 0 0-2l-8.5-3.9a2 2 0 0 0-1.6 0Z"/>
+  <path fill="url(#top)" d="m11.2 2.3-8.5 3.9a1.1 1.1 0 0 0 0 2l8.5 3.9a2 2 0 0 0 1.6 0l8.5-3.9a1.1 1.1 0 0 0 0-2l-8.5-3.9a2 2 0 0 0-1.6 0Z"/>
+  <circle cx="17.5" cy="17.5" r="5" fill="url(#badge)"/>
+  <path stroke="white" stroke-width="1.8" stroke-linecap="round" d="M17.5 14.6v5.8m-2.9-2.9h5.8"/>
+</svg>

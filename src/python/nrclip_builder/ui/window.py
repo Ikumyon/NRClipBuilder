@@ -8,9 +8,9 @@ from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QAction, QKeySequence, QShortcut, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
-    QDoubleSpinBox, QFileDialog, QFormLayout, QHBoxLayout, QInputDialog, QLabel,
+    QFileDialog, QFormLayout, QHBoxLayout, QInputDialog, QLabel,
     QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMenu, QMessageBox,
-    QPushButton, QSlider, QSplitter, QTabWidget, QTableView, QToolBar, QVBoxLayout, QWidget,
+    QPushButton, QScrollArea, QSlider, QSplitter, QTabWidget, QTableView, QToolBar, QVBoxLayout, QWidget,
 )
 
 from .. import __version__, _native
@@ -21,6 +21,7 @@ from .icons import ICON_SIZE, icon
 from .map_view import MapView
 from .structure_selector import StructureSelector
 from .table import FeatureTable
+from .export_dialog import ExportDialog
 
 
 class MainWindow(QMainWindow):
@@ -33,7 +34,8 @@ class MainWindow(QMainWindow):
         self.refreshing = False
         self.closing = False
         self.close_allowed = False
-        self.resize(1280, 820)
+        available = self.screen().availableGeometry()
+        self.resize(min(1280, int(available.width() * .9)), min(820, int(available.height() * .9)))
         self.setWindowTitle(f"NRClipBuilder {__version__}")
         self.map = MapView(self)
         self.map.event.connect(self.map_event)
@@ -61,9 +63,10 @@ class MainWindow(QMainWindow):
         name = {
             "delete_history_btn": "trash-2", "clear_history_btn": "trash-2",
             "remove_layer_btn": "trash-2", "add_map_btn": "map-plus",
-            "action_export_geojson": "arrow-down-to-line",
-            "action_export_turnout": "arrow-down-to-line",
-            "action_export_nrclip": "arrow-down-to-line",
+            "export_reexport": "arrow-down-to-line",
+            "add_line_btn": "folder-open-line", "new_layer": "layer-add",
+            "registered_data": "folder-recent", "rename_layer": "rename",
+            "clear_bbox_btn": "bbox-clear",
         }.get(key)
         if name:
             button.setIcon(icon(name))
@@ -98,7 +101,7 @@ class MainWindow(QMainWindow):
         self.table.setModel(self.table_model)
         self.table.setAlternatingRowColors(True)
         self.table.horizontalHeader().setDefaultSectionSize(140)
-        self.tabs.addTab(self.table, "Attributes")
+        self.tabs.addTab(self.table, icon("attribute-table"), "Attributes")
         self.history_table = QTableView()
         self.history_table.setModel(self.history_model)
         self.history_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -108,6 +111,7 @@ class MainWindow(QMainWindow):
         history = QWidget()
         layout = QVBoxLayout(history)
         layout.addWidget(self.history_table)
+        self.reexport_button = self.button(layout, "export_reexport", self.reexport)
         self.button(layout, "delete_history_btn", self.delete_history)
         self.button(layout, "clear_history_btn", self.clear_history)
         self.tabs.addTab(history, icon("history"), "History")
@@ -174,43 +178,15 @@ class MainWindow(QMainWindow):
         layout.addLayout(bbox_form)
         self.button(layout, "clear_bbox_btn", lambda: self.service.set_bbox(None))
         layout.addStretch()
-        self.left_tabs.addTab(filters, "Filter")
-
-        exports = QWidget()
-        layout = QVBoxLayout(exports)
-        form = QFormLayout()
-        self.options = {}
-        for name, key, value, minimum, maximum in (
-            ("scale_x", "scale_x", 1, .001, 1000), ("scale_y", "scale_y", 1, .001, 1000),
-            ("spline_tolerance", "label_spline_tolerance", 2, .01, 10000),
-            ("junction_spacing", "label_junction_spacing", 30, 0, 10000),
-            ("max_spacing", "label_max_spacing", 2000, 1, 100000),
-            ("curve_r_tolerance", "curve_radius_tolerance", 5, 0, 100),
-        ):
-            spin = QDoubleSpinBox()
-            spin.setDecimals(3)
-            spin.setRange(minimum, maximum)
-            spin.setValue(value)
-            self.form_field(form, key, spin, name.replace("_", " ").title())
-            spin.valueChanged.connect(self.options_changed)
-            self.options[name] = spin
-        layout.addLayout(form)
-        self.tangent = self.bind(QCheckBox(), "track_mode_tangent")
-        self.curve_merge = self.bind(QCheckBox(), "curve_merge", "Merge constant-radius arcs")
-        self.curve_merge.setIcon(icon("spline"))
-        self.curve_merge.setIconSize(ICON_SIZE)
-        self.curve_merge.setChecked(True)
-        for check in (self.tangent, self.curve_merge):
-            check.toggled.connect(self.options_changed)
-            layout.addWidget(check)
-        for key, format in (("action_export_geojson", "geojson"), ("action_export_turnout", "overpass"), ("action_export_nrclip", "nrclip")):
-            self.button(layout, key, lambda format=format: self.export(format))
-        layout.addStretch()
-        self.left_tabs.addTab(exports, "Export")
+        filter_scroll = QScrollArea()
+        filter_scroll.setWidgetResizable(True)
+        filter_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        filter_scroll.setWidget(filters)
+        self.left_tabs.addTab(filter_scroll, icon("filter"), "Filter")
 
         toolbar = QToolBar()
         toolbar.setIconSize(ICON_SIZE)
-        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.addToolBar(toolbar)
         self.draw_action = QAction(self)
         self.draw_action.setIcon(icon("pencil-line"))
@@ -218,18 +194,23 @@ class MainWindow(QMainWindow):
         self.draw_action.setCheckable(True)
         self.draw_action.toggled.connect(lambda active: self.map.send({"type": "draw", "active": active}))
         toolbar.addAction(self.draw_action)
-        for key, callback, default in (("finish_drawing", self.finish_draft, "Finish Line"), ("cancel_drawing", self.cancel_draft, "Discard Draft"), ("undo", self.service.undo_edit, "Undo")):
+        for key, callback, default, asset in (
+            ("finish_drawing", self.finish_draft, "Finish Line", "draw-confirm"),
+            ("cancel_drawing", self.cancel_draft, "Discard Draft", "draw-discard"),
+            ("undo", self.service.undo_edit, "Undo", "undo"),
+        ):
             action = self.bind(QAction(self), key, default)
+            action.setIcon(icon(asset))
             action.triggered.connect(lambda checked=False, callback=callback: self.call(callback))
             toolbar.addAction(action)
         self.structure = StructureSelector()
         self.structure.valueChanged.connect(lambda value: self.map.send({"type": "structure", "value": value}))
         toolbar.addWidget(self.structure)
-        self.cancel_button = QPushButton()
-        self.bind(self.cancel_button, "cancel_operation", "Cancel Operation")
-        self.cancel_button.clicked.connect(self.service.jobs.cancel)
-        toolbar.addWidget(self.cancel_button)
-        self.cancel_button.setEnabled(False)
+        self.cancel_action = self.bind(QAction(self), "cancel_operation", "Cancel Operation")
+        self.cancel_action.setIcon(icon("operation-stop"))
+        self.cancel_action.triggered.connect(self.service.jobs.cancel)
+        toolbar.addAction(self.cancel_action)
+        self.cancel_action.setEnabled(False)
         self.undo_shortcut = QShortcut(QKeySequence.StandardKey.Undo, self)
         self.undo_shortcut.activated.connect(self.service.undo_edit)
         self.next_structure_shortcut = QShortcut(QKeySequence("E"), self)
@@ -238,8 +219,12 @@ class MainWindow(QMainWindow):
         self.prev_structure_shortcut.activated.connect(lambda: self.structure.step(-1))
 
         self.file_menu = self.menuBar().addMenu("File")
-        for key, callback in (("action_open", self.open_data), ("action_open_html", self.preview), ("action_quit", self.close)):
+        for key, callback in (("action_open", self.open_data), ("export_action", self.export), ("action_open_html", self.preview), ("action_quit", self.close)):
             action = self.bind(QAction(self), key)
+            asset = {"action_open": "folder-open-line", "export_action": "arrow-down-to-line", "action_open_html": "browser-preview"}.get(key)
+            if asset:
+                action.setIcon(icon(asset))
+                action.setIconVisibleInMenu(True)
             action.triggered.connect(lambda checked=False, callback=callback: self.call(callback))
             self.file_menu.addAction(action)
 
@@ -260,7 +245,7 @@ class MainWindow(QMainWindow):
             print(message, flush=True)
 
     def busy_changed(self, busy):
-        self.cancel_button.setEnabled(busy)
+        self.cancel_action.setEnabled(busy)
         if busy:
             self.statusBar().showMessage(self.locale.text("processing", "Processing…"))
 
@@ -274,7 +259,7 @@ class MainWindow(QMainWindow):
     def retranslate(self):
         for setter, key, default in self.bindings:
             setter(self.locale.text(key, default))
-        for index, key in enumerate(("left_tab_layers", "left_tab_filter", "left_tab_export")):
+        for index, key in enumerate(("left_tab_layers", "left_tab_filter")):
             self.left_tabs.setTabText(index, self.locale.text(key))
         for index, key in enumerate(("tab_map", "tab_table", "tab_history")):
             self.tabs.setTabText(index, self.locale.text(key))
@@ -303,10 +288,6 @@ class MainWindow(QMainWindow):
         if options.get("railway_types") is not None:
             for railway, check in self.railways.items():
                 check.setChecked(railway in options["railway_types"])
-        for key, spin in self.options.items():
-            spin.setValue(state.export_options.get(key, spin.value()))
-        self.tangent.setChecked(state.export_options.get("tangent_mode", False))
-        self.curve_merge.setChecked(state.export_options.get("enable_curve_r_merging", True))
         self.refreshing = False
         self.map.send({"type": "view", "view": state.view})
         self.map.send({"type": "draft", "draft": state.draft})
@@ -315,6 +296,7 @@ class MainWindow(QMainWindow):
     def refresh(self):
         self.refreshing = True
         state = self.service.state
+        self.reexport_button.setEnabled(any(item["id"] == state.selected_history for item in state.history))
         self.draw_action.setEnabled(not self.service.draft_committing)
         self.layer_list.clear()
         for layer in state.layers:
@@ -384,15 +366,6 @@ class MainWindow(QMainWindow):
                                      "railway_types": railways, "bbox": self.service.state.bbox if self.use_bbox.isChecked() else None}
         self.service.touch(notify=False)
 
-    def options_changed(self, *args):
-        if not self.refreshing:
-            self.service.state.export_options = self.export_options()
-            self.service.touch(False, notify=False)
-
-    def export_options(self):
-        return {**{name: spin.value() for name, spin in self.options.items()},
-                "tangent_mode": self.tangent.isChecked(), "enable_curve_r_merging": self.curve_merge.isChecked()}
-
     def bbox_edited(self):
         if not self.refreshing and all(edit.text().strip() for edit in self.bbox_edits):
             self.call(lambda: self.service.set_bbox([float(edit.text()) for edit in self.bbox_edits]))
@@ -419,7 +392,9 @@ class MainWindow(QMainWindow):
     def registered_data(self):
         menu = QMenu(self)
         for path in self.service.state.registered_sources:
-            menu.addAction(path, lambda path=path: self.service.load(path))
+            action = menu.addAction(path, lambda path=path: self.service.load(path))
+            action.setIcon(icon("folder-open-line"))
+            action.setIconVisibleInMenu(True)
         menu.exec(self.cursor().pos())
 
     def add_map(self):
@@ -497,11 +472,19 @@ class MainWindow(QMainWindow):
         self.service.touch(False)
         self.map.send({"type": "draft", "draft": self.service.state.draft})
 
-    def export(self, format):
-        suffix = {"geojson": "geojson", "overpass": "json", "nrclip": "nrclip"}[format]
-        path, _ = QFileDialog.getSaveFileName(self, self.locale.text("msg_export_title"), str(Path(self.service.state.last_directory) / f"tracks.{suffix}"), f"{format} (*.{suffix})")
-        if path:
-            self.service.export(path, format, self.export_options())
+    def export(self, history_id=None):
+        request = self.service.prepare_export(history_id)
+        dialog = ExportDialog(request, self.service.state.export_options,
+                              self.service.state.last_directory, self.locale, self)
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        self.service.state.export_options = dialog.settings()
+        self.service.touch(False, notify=False)
+        if accepted:
+            self.service.export(dialog.destination, dialog.format, dialog.options(), request)
+
+    def reexport(self):
+        if self.service.state.selected_history:
+            self.export(self.service.state.selected_history)
 
     def preview(self):
         self.map.open_preview(Path(_native.data_directory()) / "preview.html")

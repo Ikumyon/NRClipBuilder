@@ -1,10 +1,60 @@
 use crate::{
-    dataset::{Cancellation, text},
-    geometry::Feature,
+    dataset::{Cancellation, SelectionData, text},
+    geometry::{BBox, Feature, Geometry},
 };
 use anyhow::Result;
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
+
+pub fn line_features(
+    selection: &SelectionData,
+    bbox: BBox,
+    cancel: &Cancellation,
+) -> Result<Vec<Feature>> {
+    let mut result = Vec::new();
+    for mut feature in selection.features(Some(bbox), cancel)? {
+        cancel.check()?;
+        let mut lines = Vec::new();
+        feature.geometry.lines(&mut lines);
+        let coordinates: Vec<_> = lines
+            .into_iter()
+            .filter(|line| line.windows(2).any(|p| p[0][..2] != p[1][..2]))
+            .cloned()
+            .collect();
+        if !coordinates.is_empty() {
+            feature.geometry = if coordinates.len() == 1 {
+                Geometry::LineString {
+                    coordinates: coordinates.into_iter().next().unwrap(),
+                }
+            } else {
+                Geometry::MultiLineString { coordinates }
+            };
+            result.push(feature);
+        }
+    }
+    Ok(result)
+}
+
+pub fn convert(
+    format: &str,
+    options: &str,
+    features: &[Feature],
+    cancel: &Cancellation,
+) -> Result<Vec<u8>> {
+    cancel.check()?;
+    match format {
+        "geojson" => Ok(serde_json::to_vec(
+            &json!({"type":"FeatureCollection","features":features}),
+        )?),
+        "overpass" => Ok(overpass(features, cancel)?.into_bytes()),
+        "nrclip" => {
+            let opts: crate::import::ExportOptions = serde_json::from_str(options)?;
+            crate::import::convert(&overpass(features, cancel)?, &opts, cancel)
+        }
+        "pmtiles" => crate::tiles::convert(features, &serde_json::from_str(options)?, cancel),
+        _ => anyhow::bail!("Unknown export format"),
+    }
+}
 
 pub fn overpass(features: &[Feature], cancel: &Cancellation) -> Result<String> {
     let mut ids: HashMap<(i64, i64), u64> = HashMap::new();

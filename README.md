@@ -13,7 +13,7 @@ Windows x64／Ubuntu 24.04以降のLinux x64向けの、鉄道GIS編集・NIMBY 
 - N05 ZIP、Shapefile、GeoJSONを読み込み、属性・鉄道種別・BBoxで絞り込みます。
 - Leaflet地図で線を描画し、頂点、地上／橋／トンネルを編集できます。Ctrl+Zで編集単位を元に戻します。描画中は右クリックで最後の点を取り消し、ダブルクリックまたは「線を確定」で保存します。
 - 背景地図の追加、レイヤーの表示・順序・透明度、BBox履歴、過去の出力履歴の再出力、多言語表示に対応します。
-- GeoJSON、Turnout向けOverpass JSON、NIMBY RailsのNRC1形式（モデル226）を出力します。書出しは選択レイヤーとBBoxに対して行います。
+- GeoJSON、Turnout向けOverpass JSON、NIMBY RailsのNRC1形式（モデル226）、PMTilesを出力します。「ファイル → 出力…」で、チェック済みの線データレイヤーをBBox・現在のフィルターで絞り込み、1ファイルにまとめます。背景地図と履歴レイヤーは通常出力に含めません。
 - Leaflet本体を同梱しています。背景タイル、OSM取得、標高取得にはネットワークが必要です。
 
 ## ソースから起動する
@@ -51,7 +51,6 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo fmt --all --check
 npm --prefix src/web test
 npm --prefix src/web run format:check
-python -m unittest discover -s tests -v
 python -m PyInstaller --noconfirm --clean packaging/nrclip_builder.spec
 ```
 
@@ -66,13 +65,27 @@ python -m PyInstaller --noconfirm --clean packaging/nrclip_builder.spec
 - `src/python/nrclip_builder/`：画面、アプリ状態、サービス、GIS読込・OSM通信。
 - `src/native/src/`：型付きデータセット、検索・クリップ、路線接続・曲線計算、NRC1変換、OS固有処理。
 - `src/web/src/`：React＋TypeScriptの地図UI、Leafletの描画・編集、型付きQt WebChannel通信。CSSは地図と操作ボタンの表示に使用します。
-- `tests/`：バージョンとリリース成果物の検証。`packaging/`は配布設定・ランチャー・ビルド用依存関係・バージョン設定と確認スクリプトです。
+- `packaging/`：配布設定・ランチャー・ビルド用依存関係・バージョン設定と確認スクリプトです。
 - Webの生成物は`src/python/nrclip_builder/resources/map/`へビルドし、wheelと配布物に同梱します。生成物を直接編集せず、`src/web/`のソースを変更して再ビルドしてください。Node.jsは開発・CI専用で、利用者には不要です。
 - PyO3の必須拡張をmaturinでビルドします。Rust計算中はPythonから離脱し、Qtのワーカーで実行します。
 - データをRust側で保持し、未変更の地物を共有します。選択結果は変更前のスナップショットを保持でき、削除や編集が進んでも実行中の出力は影響されません。
 - 地図はQt WebChannelで更新します。ページの再読込やタイトル文字列による通信は使用しません。属性表は必要なページの属性だけを取得します。
 - 正規表現はRustの`regex`構文です。先読み・後読み・後方参照などの未対応構文はエラーになります。
 - SHPはPRJがあればEPSG:4326に変換し、PRJなしはWGS84として扱います。DBFはCPGを優先し、CPGなしではUTF-8／CP932を判定します。
+
+## 出力
+
+「ファイル → 出力…」を開くと、その時点の対象レイヤー・データ・BBox・フィルターが固定されます。NRC1／PMTiles／GeoJSON／Turnout JSONのタブで形式を選び、保存先を指定して出力してください。形式を切り替えても入力した設定は保持され、形式別設定と最後の形式はセッションに保存されます。NRC1の縮尺・曲線設定はNRC1だけに適用します。PMTilesのズームは初期値0〜14、指定可能範囲は0〜22です。
+
+履歴タブの「再出力…」は、選択した履歴の保存済みデータとBBoxを使用します。現在のチェック状態やフィルターには左右されません。ファイルの保存成功後だけ新しい履歴を追加します。
+
+### NIMBY RailsでPMTilesを使う
+
+PMTilesは背景の鉄道地図を表示するための形式です。ゲーム内で建設・運行する線路を出力する場合はNRC1を選んでください。
+
+NIMBY Rails 1.19以降の「Map options → Sources → New source」から、出力したローカルの`.pmtiles`を地図ソースとして追加します。OpenMapTilesの鉄道表示に対応するスタイルを使用してください。レイヤー名は`transportation`、`class=rail`、鉄道種別は`subclass`です。橋は`brunnel=bridge`、トンネルは`brunnel=tunnel`、地上は`brunnel`属性なしで区別します。色と線種はゲーム側のスタイルに従います。専用スタイルModは生成しません。
+
+PMTiles v3にgzip圧縮したMVTを格納し、外部ツールなしで生成します。最大ズームでは座標の量子化のみ、低ズームでは簡略化を行います。元データに構造情報がない線は地上として扱い、地上・橋・トンネルの推測はしません。属性は[OpenMapTilesのtransportationスキーマ](https://github.com/openmaptiles/openmaptiles/blob/master/layers/transportation/transportation.yaml)に合わせています（スキーマ：CC-BY）。元データの利用条件・出典表示も別途確認してください。
 
 ## 保存と復旧
 

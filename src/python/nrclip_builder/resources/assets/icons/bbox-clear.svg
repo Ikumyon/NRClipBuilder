@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <defs>
+    <linearGradient id="frame" x1="3" y1="3" x2="21" y2="21" gradientUnits="userSpaceOnUse"><stop stop-color="#50E6FF"/><stop offset="1" stop-color="#0078D4"/></linearGradient>
+    <linearGradient id="badge" x1="14" y1="13" x2="22" y2="22" gradientUnits="userSpaceOnUse"><stop stop-color="#FF8FA3"/><stop offset=".45" stop-color="#F83B5C"/><stop offset="1" stop-color="#B4002E"/></linearGradient>
+  </defs>
+  <rect x="4" y="4" width="16" height="16" rx="2" fill="#A6E9FF" fill-opacity=".35"/>
+  <path stroke="url(#frame)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M3 8V5a2 2 0 0 1 2-2h3m8 0h3a2 2 0 0 1 2 2v3M3 16v3a2 2 0 0 0 2 2h3m8 0h3a2 2 0 0 0 2-2v-3"/>
+  <circle cx="17.5" cy="17.5" r="5" fill="url(#badge)"/>
+  <path stroke="white" stroke-width="1.9" stroke-linecap="round" d="m15.6 15.6 3.8 3.8m0-3.8-3.8 3.8"/>
+</svg>

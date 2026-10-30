@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections import deque
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -13,6 +14,15 @@ from .adapters import gis, network
 from .jobs import Jobs
 from .state import HISTORY_ID, Layer, initial_state
 from .storage import SessionRepository
+
+
+@dataclass(frozen=True)
+class ExportRequest:
+    batch: _native.ExportBatch
+    names: tuple[str, ...]
+    bbox: tuple[float, ...] | None
+    filters: str
+    history: bool = False
 
 
 class ApplicationService(QObject):
@@ -280,32 +290,41 @@ class ApplicationService(QObject):
                 self.state.draft = {"points": [], "segments": []}
         self.edit(layer.id, features, committed=clear_committed_draft)
 
-    def export(self, path, format, options):
+    def prepare_export(self, history_id=None):
         if self.edit_busy or self.edits:
             raise ValueError("Wait for pending edits before exporting")
-        selected = self.state.selected
-        layer = self.state.layer(selected)
-        if not layer or layer.kind == "tile":
-            raise ValueError("Select a line data layer or output history")
-        if not self.state.bbox:
+        if history_id is not None:
+            item = next((item for item in self.state.history if item["id"] == history_id), None)
+            if item is None:
+                raise ValueError("Select an output history entry")
+            bbox = tuple(item["bbox"])
+            batch = _native.ExportBatch.from_history(json.dumps(item["geojson"], ensure_ascii=False), bbox)
+            return ExportRequest(batch, (item["name"],), bbox, "{}", True)
+        layers = [layer for layer in self.state.layers if layer.kind == "data" and layer.visible]
+        bbox = tuple(self.state.bbox) if self.state.bbox else None
+        filters = json.dumps(self.state.filter, ensure_ascii=False)
+        batch = self.engine.prepare_export([layer.id for layer in layers], filters, bbox)
+        return ExportRequest(batch, tuple(layer.name for layer in layers), bbox, filters)
+
+    def export(self, path, format, options, request):
+        if not request.names:
+            raise ValueError("Check at least one line data layer")
+        if request.bbox is None:
             raise ValueError("Select a BBox before exporting")
         if self.jobs.running("export"):
             raise ValueError("An export is already running")
-        options = {**options, "name": Path(path).stem, "bbox": list(self.state.bbox)}
-        filters = json.dumps(self.state.filter)
-        snapshot = self.engine.capture(selected)
+        options = {**options, "name": Path(path).stem}
 
         def convert(token):
-            selection = snapshot.select(filters, token)
-            data = selection.export(format, json.dumps(options), token)
-            geojson = json.loads(selection.export("geojson", json.dumps(options), token))
+            data, geojson = request.batch.export(format, json.dumps(options), token)
+            geojson = json.loads(geojson)
             token.check()
             _native.atomic_write(str(path), data)
             # After the commit, deliver completion even if cancellation arrives.
             return geojson
 
         def done(geojson):
-            item = {"id": uuid4().hex, "name": options["name"], "bbox": options["bbox"],
+            item = {"id": uuid4().hex, "name": options["name"], "bbox": list(request.bbox),
                     "timestamp": datetime.now(timezone.utc).isoformat(), "geojson": geojson}
             self.state.history.insert(0, item)
             self.state.last_directory = str(Path(path).parent)

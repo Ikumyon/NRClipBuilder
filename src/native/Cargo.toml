@@ -11,6 +11,8 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 anyhow = "1.0.104"
 geo = "0.33.1"
+mvt = "0.15"
+pmtiles = { version = "0.25", default-features = false, features = ["write"] }
 open = "5.4.5"
 pyo3 = { version = "0.30.1" }
 regex = "1.13.1"

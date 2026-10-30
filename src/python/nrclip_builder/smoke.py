@@ -42,7 +42,7 @@ def install(app, window, directory):
             service.set_bbox([139,35,140,36])
             stage = 1
         elif stage == 1 and any(layer.kind == "data" for layer in service.state.layers):
-            service.export(Path(directory) / "smoke.nrclip", "nrclip", {})
+            service.export(Path(directory) / "smoke.nrclip", "nrclip", {}, service.prepare_export())
             stage = 2
         elif stage == 2 and service.state.history and rendered and not service.jobs.active:
             service.save()

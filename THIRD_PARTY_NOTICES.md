@@ -29,3 +29,10 @@ SOFTWARE.
 
 The React/React DOM MIT licenses and Leaflet BSD-2-Clause license are bundled
 with the built map at `nrclip_builder/resources/map/LICENSES.txt`.
+
+PMTiles output uses the `pmtiles` and `mvt` Rust crates (MIT OR Apache-2.0).
+The transportation attributes follow the OpenMapTiles schema (CC-BY):
+https://github.com/openmaptiles/openmaptiles
+https://openmaptiles.org/docs/schema/
+The PMTiles metadata includes schema attribution. This does not replace the
+licensing and attribution requirements of the user's source datasets.
