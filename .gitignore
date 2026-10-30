@@ -19,6 +19,8 @@ node_modules/
 # Local editor settings
 .DS_Store
 /.vscode/
+/local-build.bat
+/local-build.ps1
 
 # Local user data, exports and previews (preserved)
 /.userdata/
