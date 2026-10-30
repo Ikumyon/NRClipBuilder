@@ -54,6 +54,8 @@ export interface ControlsState {
   strings: Strings;
   selecting: boolean;
   hint: string;
+  elevation: string;
+  elevationError: string;
 }
 export interface QtSignal {
   connect(callback: (raw: string) => void): void;

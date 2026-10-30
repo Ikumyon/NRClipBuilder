@@ -1,5 +1,6 @@
 import * as L from "leaflet";
 import type * as GeoJSON from "geojson";
+import { fetchElevation, formatElevationError } from "./elevation.ts";
 import type {
   BBox,
   Collection,
@@ -52,10 +53,28 @@ export function createMapController(
   let strings: Strings = {},
     initializedView = false,
     hint = "";
+  let elevation = "";
+  let elevationFailure: {
+    error: unknown;
+    timedOut: boolean;
+    latitude: number;
+    longitude: number;
+  } | null = null;
   let disposed = false;
   const elevationRequests = new Set<AbortController>();
+  function elevationErrorText() {
+    if (!elevationFailure) return "";
+    const { error, timedOut, latitude, longitude } = elevationFailure;
+    return `${label("map_elevation_error", "Elevation unavailable")} (${latitude.toFixed(7)}, ${longitude.toFixed(7)}): ${formatElevationError(error, timedOut, strings)}`;
+  }
   function notify() {
-    onControls({ strings, selecting, hint });
+    onControls({
+      strings,
+      selecting,
+      hint,
+      elevation,
+      elevationError: elevationErrorText(),
+    });
   }
   function setHint(value: string) {
     hint = value;
@@ -397,26 +416,28 @@ export function createMapController(
     }, 200);
   });
   let elevationTimer: ReturnType<typeof setTimeout> | undefined;
+  let elevationSequence = 0;
   map.on("mousemove", (event) => {
     clearTimeout(elevationTimer);
+    const sequence = ++elevationSequence;
+    for (const request of elevationRequests) request.abort();
+    if (!elevation && !elevationFailure) {
+      elevation = label("map_elevation", "Elevation") + ": …";
+      notify();
+    }
     elevationTimer = setTimeout(async () => {
       const p = event.latlng;
       const request = new AbortController();
       elevationRequests.add(request);
-      const timeout = setTimeout(() => request.abort(), 5000);
+      let timedOut = false;
+      const timeout = setTimeout(() => {
+        timedOut = true;
+        request.abort();
+      }, 5000);
       try {
-        const response = await fetch(
-          "https://cyberjapandata2.gsi.go.jp/general/dem/scripts/getelevation.php?lon=" +
-            p.lng.toFixed(7) +
-            "&lat=" +
-            p.lat.toFixed(7) +
-            "&outtype=JSON",
-          { signal: request.signal },
-        );
-        const data: { elevation: number | string } = await response.json();
-        if (disposed) return;
-        let text =
-          label("map_elevation", "Elevation") + ": " + data.elevation + " m";
+        const height = await fetchElevation(p.lng, p.lat, request.signal);
+        if (disposed || sequence !== elevationSequence) return;
+        let text = label("map_elevation", "Elevation") + ": " + height + " m";
         if (drawMode && points.length) {
           const distance = map.distance(latlng(points.at(-1)!), p);
           text +=
@@ -426,33 +447,37 @@ export function createMapController(
             distance.toFixed(1) +
             " m";
           const previous = points.at(-1)!;
-          if (
-            previous.length > 2 &&
-            distance > 0 &&
-            typeof data.elevation === "number" &&
-            Number.isFinite(data.elevation)
-          )
+          if (previous.length > 2 && distance > 0)
             text +=
               " · " +
               label("map_slope", "Gradient") +
               ": " +
-              (((data.elevation - previous[2]) / distance) * 1000).toFixed(1) +
+              (((height - previous[2]) / distance) * 1000).toFixed(1) +
               " ‰";
         }
-        if (!selecting) setHint(text);
+        elevation = text;
+        elevationFailure = null;
+        notify();
         if (
           drawMode &&
           points.length &&
-          map.distance(latlng(points.at(-1)!), p) < 1 &&
-          typeof data.elevation === "number" &&
-          Number.isFinite(data.elevation)
+          map.distance(latlng(points.at(-1)!), p) < 1
         ) {
-          points.at(-1)![2] = data.elevation as number;
+          points.at(-1)![2] = height;
           emit("draft", { draft: { points, segments } });
         }
-      } catch {
-        if (!disposed && !selecting)
-          setHint(label("map_elevation_error", "Elevation unavailable"));
+      } catch (error) {
+        if (!disposed && sequence === elevationSequence) {
+          elevation = "";
+          elevationFailure = {
+            error,
+            timedOut,
+            latitude: p.lat,
+            longitude: p.lng,
+          };
+          console.error("GSI elevation request failed", elevationErrorText());
+          notify();
+        }
       } finally {
         clearTimeout(timeout);
         elevationRequests.delete(request);

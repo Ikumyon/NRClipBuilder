@@ -1,5 +1,11 @@
 # Third-party notices
 
+Linux distributions include the Fcitx 4/5 Qt input plugin from fcitx5-qt 5.1.16
+(BSD-3-Clause and LGPL-2.1-or-later), built against the bundled Qt version.
+The unmodified source archive and license texts are included in
+`third_party/fcitx5-qt/`. Source revision:
+https://github.com/fcitx/fcitx5-qt/tree/115750044f3d0db16ca5859808c7da830fd1ff52
+
 `src/native/src/{geo,hobby,import,nrc1,wire,wyhash_nrc1}.rs` and `src/native/src/types/`
 contain code adapted from Turnout (https://github.com/SuperManifolds/Turnout).
 The test-only independent Python NRC1 decoder was retained from this project's

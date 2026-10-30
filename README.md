@@ -8,6 +8,12 @@ Windows x64／Ubuntu 24.04以降のLinux x64向けの、鉄道GIS編集・NIMBY 
 
 配布版は[GitHub Releases](https://github.com/Ikumyon/NRClipBuilder/releases)のAssetsからダウンロードできます。Pythonのインストールは不要です。ZIP／tar.gzを展開し、フォルダー全体を保持してNRClipBuilderを起動してください。
 
+Linux配布版には同梱Qtに合わせてビルドしたFcitx 4／5の入力プラグインを含めます。日本語入力にはMint側でFcitxとMozcなどの入力エンジンが動作している必要があります。`QT_IM_MODULE`／`QT_IM_MODULES`が未指定の場合は、Rust側で`XMODIFIERS`の指定に合わせて入力方式を選択します。
+
+標高はマウスを地図上で止めると取得します。取得できない場合は、地図上の専用欄に座標とエラー内容を表示します。通信エラー、HTTPの失敗応答、5秒のタイムアウト、データ範囲外、不正な応答を区別し、BBox選択中も表示を維持します。
+
+Linux版は通常、既定の描画方式で起動します。地図の起動中に描画プロセスが異常終了するか、30秒以内に起動確認が取れない場合だけ、ネイティブEGL（`QT_XCB_GL_INTEGRATION=xcb_egl`、`--use-gl=egl`）で再試行します。それでも失敗した場合は、`QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" ./NRClipBuilder`と同じGPU無効化指定で最後の再試行を行います。方式の選択と再起動はRust側で制御し、設定は保存しません。通常終了・起動後の異常終了・描画以外の起動エラーでは再試行しません。GBM確保の警告が出ても、EGL経由で画面と地図が正常に表示される場合があります。
+
 以下では、ソースコードから起動し、変更やビルドを行うための手順を説明します。
 
 - N05 ZIP、Shapefile、GeoJSONを読み込み、属性・鉄道種別・BBoxで絞り込みます。
@@ -56,7 +62,9 @@ python -m PyInstaller --noconfirm --clean packaging/nrclip_builder.spec
 
 配布用アプリは`dist/NRClipBuilder/`に生成されます。実行ファイルだけでなく、このフォルダー全体が必要です。
 
-配布物の画面テストには動作するQtWebEngine環境が必要です。Windowsは`dist/NRClipBuilder/NRClipBuilder.exe --smoke-test`、Linuxのヘッドレス実行は`xvfb-run -a dist/NRClipBuilder/NRClipBuilder --smoke-test`を使用します。
+Linuxの配布ビルド前には`python packaging/build_fcitx.py`を実行してください。`cmake`、`extra-cmake-modules`、X11／XCB／xkbcommon／OpenGL／EGL／Vulkan／Waylandの開発パッケージと`wayland-protocols`が必要です。同スクリプトはPySide6と同じバージョンのQt SDKを取得してFcitxプラグインをビルドし、PySide6のQtでロードできることを確認します。SDKは配布物には含めません。
+
+画面テストには動作するQtWebEngine環境が必要です。`python -m PyInstaller --noconfirm --clean --distpath build/smoke-dist --workpath build/smoke-work packaging/smoke.spec`で検証専用アプリを生成し、Windowsは`build/smoke-dist/NRClipBuilder/NRClipBuilder.exe`、Linuxのヘッドレス実行は`xvfb-run -a build/smoke-dist/NRClipBuilder/NRClipBuilder`を使用します。配布アプリにはテスト用コード・データ・起動オプションを同梱しません。CIは配布用実行ファイル内部のモジュールも検査してからアーカイブを作成します。
 
 ソースからのビルドでは、バージョンは`0.0.0-dev`です。`python -m nrclip_builder --version`で確認できます。
 

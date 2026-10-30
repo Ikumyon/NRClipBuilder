@@ -8,6 +8,12 @@ A railway GIS editor and NIMBY Rails exporter for Windows x64 and Ubuntu 24.04+ 
 
 Ready-to-run packages are available from [GitHub Release Assets](https://github.com/Ikumyon/NRClipBuilder/releases). No Python installation is required. Extract the ZIP or tar.gz, keep the entire directory and launch NRClipBuilder.
 
+Linux packages include a Fcitx 4/5 input plugin built against the bundled Qt. The desktop still needs a running Fcitx service and an input engine such as Mozc. If neither `QT_IM_MODULE` nor `QT_IM_MODULES` is set, Rust selects the input method specified by `XMODIFIERS`.
+
+Elevation is requested when the pointer stops over the map. A separate map field displays the coordinates and error details for network errors, HTTP failures, five-second timeouts, missing coverage, and invalid responses, including while selecting a BBox.
+
+On Linux, the application starts with the default graphics configuration. Only if graphics startup crashes or fails to become ready within 30 seconds does it retry with native EGL (`QT_XCB_GL_INTEGRATION=xcb_egl` and `--use-gl=egl`). If that also fails, the final attempt disables GPU acceleration, equivalent to `QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" ./NRClipBuilder`. Rust controls the retries, and the selected mode is not saved. Normal exits, failures after startup, and unrelated startup errors do not trigger retries. GBM allocation warnings can still appear while the window and map render successfully through EGL.
+
 The instructions below explain how to run, modify and build the application from source.
 
 Import N05 ZIP, Shapefile and GeoJSON; filter attributes and railway types; select a BBox; draw and edit lines, bridges and tunnels; manage layers, opacity, history and languages; export GeoJSON, Turnout Overpass JSON, NIMBY Rails NRC1 model 226 or PMTiles.
@@ -54,7 +60,7 @@ python -m PyInstaller --noconfirm --clean packaging/nrclip_builder.spec
 
 The standalone application is generated in `dist/NRClipBuilder/`. Keep this entire directory, including the files alongside the executable.
 
-Packaged UI tests require QtWebEngine. Use `dist/NRClipBuilder/NRClipBuilder.exe --smoke-test` on Windows or `xvfb-run -a dist/NRClipBuilder/NRClipBuilder --smoke-test` on headless Linux.
+UI tests require QtWebEngine. Build the CI-only validation application with `python -m PyInstaller --noconfirm --clean --distpath build/smoke-dist --workpath build/smoke-work packaging/smoke.spec`, then run `build/smoke-dist/NRClipBuilder/NRClipBuilder.exe` on Windows or `xvfb-run -a build/smoke-dist/NRClipBuilder/NRClipBuilder` on headless Linux. Test code, test data and test command-line options are excluded from the distribution application. CI inspects its embedded modules before archiving it.
 
 Source builds use version `0.0.0-dev`. Check it with `python -m nrclip_builder --version`.
 

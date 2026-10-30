@@ -14,13 +14,26 @@ body,
   display: flex;
   gap: 6px;
   align-items: center;
+  flex-wrap: wrap;
+  max-width: calc(100% - 67px);
 }
 #controls button,
-#hint {
+#hint,
+#elevation {
   background: white;
   border: 1px solid #bbb;
   border-radius: 4px;
   padding: 7px 10px;
+}
+#elevation {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+#elevation.error {
+  color: #a51111;
+  border-color: #a51111;
+  background: #fff5f5;
 }
 #controls button[aria-pressed="true"] {
   background: #fff3bf;

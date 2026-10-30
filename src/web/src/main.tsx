@@ -17,6 +17,8 @@ function App() {
     strings: {},
     selecting: false,
     hint: "",
+    elevation: "",
+    elevationError: "",
   });
 
   useEffect(() => {
@@ -63,6 +65,15 @@ function App() {
         {controls.hint && (
           <span id="hint" role="status">
             {controls.hint}
+          </span>
+        )}
+        {(controls.elevation || controls.elevationError) && (
+          <span
+            id="elevation"
+            className={controls.elevationError ? "error" : undefined}
+            role={controls.elevationError ? "alert" : "status"}
+          >
+            {controls.elevationError || controls.elevation}
           </span>
         )}
       </div>

@@ -25,10 +25,9 @@ from .export_dialog import ExportDialog
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, service=None, show_errors=True):
+    def __init__(self, service=None):
         super().__init__()
         self.service = service or ApplicationService(self)
-        self.show_errors = show_errors
         self.locale = Localisation(self)
         self.bindings = []
         self.refreshing = False
@@ -239,10 +238,7 @@ class MainWindow(QMainWindow):
         if self.closing:
             self.closing = False
             self.setEnabled(True)
-        if self.show_errors:
-            QMessageBox.critical(self, self.locale.text("dialog_error"), str(message))
-        else:
-            print(message, flush=True)
+        QMessageBox.critical(self, self.locale.text("dialog_error"), str(message))
 
     def busy_changed(self, busy):
         self.cancel_action.setEnabled(busy)

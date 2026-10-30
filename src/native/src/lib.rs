@@ -336,8 +336,16 @@ fn system_locale() -> String {
         .to_lowercase()
 }
 #[pyfunction]
-fn initialize() -> PyResult<()> {
-    platform::initialize().map_err(error)
+fn initialize(py: Python<'_>) -> PyResult<()> {
+    platform::initialize(py).map_err(error)
+}
+#[pyfunction]
+fn supervise_startup(py: Python<'_>) -> PyResult<(bool, Option<i32>)> {
+    platform::supervise_startup(py).map_err(error)
+}
+#[pyfunction]
+fn startup_ready() -> PyResult<()> {
+    platform::startup_ready().map_err(error)
 }
 #[pyfunction]
 fn atomic_write(py: Python<'_>, path: String, data: Vec<u8>) -> PyResult<()> {
@@ -368,6 +376,12 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(data_directory, m)?)?;
     m.add_function(wrap_pyfunction!(system_locale, m)?)?;
     m.add_function(wrap_pyfunction!(initialize, m)?)?;
+    m.add_function(wrap_pyfunction!(supervise_startup, m)?)?;
+    m.add_function(wrap_pyfunction!(startup_ready, m)?)?;
+    m.add(
+        "GRAPHICS_STARTUP_FAILURE",
+        platform::startup::GRAPHICS_STARTUP_FAILURE,
+    )?;
     m.add_function(wrap_pyfunction!(atomic_write, m)?)?;
     m.add_function(wrap_pyfunction!(open_external, m)?)?;
     m.add_function(wrap_pyfunction!(validate_bbox, m)?)?;

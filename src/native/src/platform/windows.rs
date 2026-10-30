@@ -1,12 +1,13 @@
 //! Windows application identity, hidden attributes and file replacement.
 use anyhow::{Context, Result};
+use pyo3::Python;
 use std::{
     os::windows::{ffi::OsStrExt, fs::MetadataExt},
     path::Path,
 };
 use windows_sys::Win32::Storage::FileSystem::{FILE_ATTRIBUTE_HIDDEN, SetFileAttributesW};
 
-pub fn initialize() -> Result<()> {
+pub fn initialize(_py: Python<'_>) -> Result<()> {
     let id: Vec<u16> = "NRClipBuilder.Desktop\0".encode_utf16().collect();
     // The UTF-16 buffer is NUL terminated and lives until the call returns.
     let status = unsafe {
@@ -16,6 +17,14 @@ pub fn initialize() -> Result<()> {
         status >= 0,
         "Cannot set Windows application identity: {status}"
     );
+    Ok(())
+}
+
+pub fn supervise_startup(_py: Python<'_>) -> Result<(bool, Option<i32>)> {
+    Ok((false, None))
+}
+
+pub fn startup_ready() -> Result<()> {
     Ok(())
 }
 

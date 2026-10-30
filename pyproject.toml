@@ -26,4 +26,4 @@ include = [
   { path = "nrclip_builder/resources/map/*", format = ["wheel", "sdist"] },
   { path = "src/web/**/*", format = "sdist" }
 ]
-exclude = ["src/web/node_modules/**/*", "**/*.pdb"]
+exclude = ["src/web/node_modules/**/*", "**/*.pdb", "**/tests/**/*", "**/fixtures/**/*", "**/smoke.py"]

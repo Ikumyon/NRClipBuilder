@@ -5,7 +5,7 @@ from time import monotonic
 
 from PySide6.QtCore import QTimer
 
-from . import __version__
+from nrclip_builder import __version__
 
 
 def install(app, window, directory):

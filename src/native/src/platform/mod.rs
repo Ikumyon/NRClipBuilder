@@ -12,7 +12,8 @@ mod os;
 #[path = "windows.rs"]
 mod os;
 
-pub use os::{bundle_library, initialize};
+pub(crate) mod startup;
+pub use os::{bundle_library, initialize, startup_ready, supervise_startup};
 
 fn application_root(package_file: &Path, executable: &Path, packaged: bool) -> Result<PathBuf> {
     if packaged {
