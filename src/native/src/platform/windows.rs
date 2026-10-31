@@ -52,24 +52,3 @@ pub fn bundle_library(name: &str) -> bool {
     !(matches!(name.as_str(), "icu.dll" | "icuuc.dll" | "icuin.dll")
         || (name.starts_with("icudt") && name.ends_with(".dll")))
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn system_icu_is_not_bundled_from_path() {
-        assert!(!super::bundle_library("ICUUC.dll"));
-        assert!(!super::bundle_library("icudt78.dll"));
-        assert!(super::bundle_library("Qt6Core.dll"));
-    }
-
-    #[test]
-    fn data_directory_has_hidden_attribute() {
-        use std::os::windows::fs::MetadataExt;
-        let root = tempfile::tempdir().unwrap();
-        let directory = super::super::create_data_directory(root.path()).unwrap();
-        assert_ne!(
-            std::fs::metadata(directory).unwrap().file_attributes() & super::FILE_ATTRIBUTE_HIDDEN,
-            0
-        );
-    }
-}

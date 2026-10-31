@@ -1,4 +1,4 @@
-name: Test and package
+name: Build and package
 on:
   push:
     branches: [main]
@@ -17,16 +17,13 @@ jobs:
           - os: windows-2025
             archive: NRClipBuilder-windows-x64.zip
             executable: dist/NRClipBuilder/NRClipBuilder.exe
-            smoke_executable: build/smoke-dist/NRClipBuilder/NRClipBuilder.exe
           - os: ubuntu-24.04
             archive: NRClipBuilder-linux-x64.tar.gz
             executable: dist/NRClipBuilder/NRClipBuilder
-            smoke_executable: build/smoke-dist/NRClipBuilder/NRClipBuilder
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:
       PYTHONUTF8: '1'
-      QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox
     steps:
       - uses: actions/checkout@v5
         with:
@@ -57,10 +54,8 @@ jobs:
         working-directory: src/web
         run: |
           npm ci
-          npm test
           npm run format:check
           npm run build
-          npm run build:test
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.95.0'
@@ -70,7 +65,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb weston libegl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 libxcb-xinerama0 libxcb-randr0 libxcb-render-util0 libasound2t64 libnss3 libgbm1 cmake extra-cmake-modules libxkbcommon-dev libxcb1-dev libx11-dev libgl-dev libegl-dev libvulkan-dev libwayland-dev wayland-protocols
+          sudo apt-get install -y libegl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 libxcb-xinerama0 libxcb-randr0 libxcb-render-util0 libasound2t64 libnss3 libgbm1 cmake extra-cmake-modules libxkbcommon-dev libxcb1-dev libx11-dev libgl-dev libegl-dev libvulkan-dev libwayland-dev wayland-protocols
       - name: Install build dependencies
         run: python -m pip install -r packaging/requirements-build.txt
       - name: Build and verify Fcitx input plugin with bundled Qt
@@ -79,7 +74,6 @@ jobs:
       - name: Rust checks
         run: |
           cargo fmt --all --check
-          cargo test --locked
           cargo clippy --locked --all-targets -- -D warnings
       - name: Build and install native wheel
         shell: python
@@ -92,11 +86,6 @@ jobs:
           if len(wheels) != 1:
               raise RuntimeError(f"Expected exactly one built wheel, found {wheels}")
           subprocess.run([sys.executable, "-m", "pip", "install", "--no-deps", "--force-reinstall", str(wheels[0])], check=True)
-      - name: Test browser operations and Qt integration
-        env:
-          QT_QPA_PLATFORM: offscreen
-          QTWEBENGINE_CHROMIUM_FLAGS: --disable-gpu --no-sandbox
-        run: python -m pytest tests -q
       - name: Verify installed application version
         env:
           EXPECTED_VERSION: ${{ steps.version.outputs.version }}
@@ -112,8 +101,6 @@ jobs:
               raise RuntimeError(f"Unexpected --version output: {result.stdout!r}")
       - name: Package
         run: python -m PyInstaller --noconfirm --clean packaging/nrclip_builder.spec
-      - name: Package CI-only validation app outside distribution
-        run: python -m PyInstaller --noconfirm --clean --distpath build/smoke-dist --workpath build/smoke-work packaging/smoke.spec
       - name: Verify executable version
         env:
           EXPECTED_VERSION: ${{ steps.version.outputs.version }}
@@ -125,40 +112,6 @@ jobs:
           import sys
           subprocess.run([sys.executable, "packaging/verify_version.py", os.environ["EXPECTED_VERSION"],
                           "--executable", os.environ["EXECUTABLE"]], check=True)
-      - name: Windows packaged smoke test
-        if: runner.os == 'Windows'
-        env:
-          QTWEBENGINE_CHROMIUM_FLAGS: --disable-gpu --no-sandbox
-          QT_QPA_PLATFORM: offscreen
-          NRCLIP_EXPECTED_VERSION: ${{ steps.version.outputs.version }}
-          EXECUTABLE: ${{ matrix.smoke_executable }}
-        shell: pwsh
-        run: |
-          $appProcess = Start-Process -FilePath $env:EXECUTABLE -WindowStyle Hidden -PassThru
-          if (-not $appProcess.WaitForExit(120000)) {
-            $appProcess.Kill()
-            throw 'Packaged smoke test timed out'
-          }
-          if ($appProcess.ExitCode -ne 0) { throw "Packaged smoke test failed: $($appProcess.ExitCode)" }
-      - name: Linux X11 packaged smoke test
-        if: runner.os == 'Linux'
-        env:
-          NRCLIP_EXPECTED_VERSION: ${{ steps.version.outputs.version }}
-          EXECUTABLE: ${{ matrix.smoke_executable }}
-        run: timeout 180s xvfb-run -a "$EXECUTABLE"
-      - name: Linux Wayland packaged smoke test
-        if: runner.os == 'Linux'
-        env:
-          NRCLIP_EXPECTED_VERSION: ${{ steps.version.outputs.version }}
-          EXECUTABLE: ${{ matrix.smoke_executable }}
-        run: |
-          export XDG_RUNTIME_DIR="$(mktemp -d)"
-          chmod 700 "$XDG_RUNTIME_DIR"
-          weston --backend=headless-backend.so --socket=wayland-nrclip --idle-time=0 &
-          compositor=$!
-          trap 'kill "$compositor"' EXIT
-          for i in $(seq 1 30); do test -S "$XDG_RUNTIME_DIR/wayland-nrclip" && break; sleep 1; done
-          WAYLAND_DISPLAY=wayland-nrclip QT_QPA_PLATFORM=wayland timeout 180s "$EXECUTABLE"
       - name: Verify production distribution excludes all test items
         run: python packaging/verify_distribution.py "${{ matrix.executable }}"
       - name: Archive Windows

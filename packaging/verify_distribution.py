@@ -9,7 +9,7 @@ from PyInstaller.archive.readers import CArchiveReader
 def is_test_item(name):
     parts = name.replace("\\", "/").replace(".", "/").lower().split("/")
     return any(
-        part in {"test", "tests", "fixtures", "pytest", "unittest", "doctest", "smoke", "smoke_launcher", "qttest", "qt6test", "libqt6test", "qt6quicktest", "libqt6quicktest"}
+        part in {"test", "tests", "fixtures", "pytest", "unittest", "doctest", "qttest", "qt6test", "libqt6test", "qt6quicktest", "libqt6quicktest"}
         or part.startswith("test_")
         or part.endswith("_test")
         or part == "conftest"

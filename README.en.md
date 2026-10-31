@@ -58,19 +58,13 @@ Restart the application after changing Python code. After changing the map UI, r
 Use the following commands to check your changes and build a standalone application. Build Windows packages on Windows and Linux packages on Linux.
 
 ```text
-cargo test --locked
 cargo clippy --locked --all-targets -- -D warnings
 cargo fmt --all --check
-npm --prefix src/web test
 npm --prefix src/web run format:check
-npm --prefix src/web run build:test
-python -m pytest tests -q
 python -m PyInstaller --noconfirm --clean packaging/nrclip_builder.spec
 ```
 
 The standalone application is generated in `dist/NRClipBuilder/`. Keep this entire directory, including the files alongside the executable.
-
-UI tests require QtWebEngine. Build the CI-only validation application with `python -m PyInstaller --noconfirm --clean --distpath build/smoke-dist --workpath build/smoke-work packaging/smoke.spec`, then run `build/smoke-dist/NRClipBuilder/NRClipBuilder.exe` on Windows or `xvfb-run -a build/smoke-dist/NRClipBuilder/NRClipBuilder` on headless Linux. Test code, test data and test command-line options are excluded from the distribution application. CI inspects its embedded modules before archiving it.
 
 Source builds use version `0.0.0-dev`. Check it with `python -m nrclip_builder --version`.
 

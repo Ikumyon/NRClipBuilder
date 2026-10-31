@@ -29,8 +29,7 @@ if os_name == 'nt':
 
 root = Path(SPECPATH).parent
 is_test_item = run_path(str(root / 'packaging' / 'verify_distribution.py'))['is_test_item']
-smoke_build = globals().get('_NRCLIP_SMOKE_BUILD', False)
-datas = collect_data_files('nrclip_builder', excludes=['**/*.pdb', '**/tests/**', '**/fixtures/**', '**/smoke.py']) + collect_data_files('pyproj')
+datas = collect_data_files('nrclip_builder', excludes=['**/*.pdb', '**/tests/**', '**/fixtures/**']) + collect_data_files('pyproj')
 datas += [(str(root / 'LICENSE'), '.'), (str(root / 'THIRD_PARTY_NOTICES.md'), '.')]
 binaries = collect_dynamic_libs('pyproj')
 if os_name != 'nt':
@@ -44,22 +43,21 @@ if os_name != 'nt':
         (str(fcitx_root / 'fcitx5-qt-115750044f3d0db16ca5859808c7da830fd1ff52' / 'LICENSES'), 'third_party/fcitx5-qt/LICENSES'),
     ]
 a = Analysis(
-    [str(root / 'packaging' / ('smoke_launcher.py' if smoke_build else 'launcher.py'))],
+    [str(root / 'packaging' / 'launcher.py')],
     # Bundle the installed wheel, including its matching native extension.
     pathex=[],
     binaries=binaries,
     datas=datas,
     hiddenimports=['nrclip_builder._native', 'PySide6.QtWebEngineWidgets', 'PySide6.QtWebChannel'],
-    excludes=['pytest', 'tests', 'zstandard', 'unittest', 'doctest', 'PySide6.QtTest'] + ([] if smoke_build else ['smoke', 'nrclip_builder.smoke']),
+    excludes=['pytest', 'tests', 'zstandard', 'unittest', 'doctest', 'PySide6.QtTest'],
     noarchive=False,
 )
-if not smoke_build:
-    a.pure = [entry for entry in a.pure if not is_test_item(entry[0])]
+a.pure = [entry for entry in a.pure if not is_test_item(entry[0])]
 a.datas = [entry for entry in a.datas if not is_test_item(entry[0])]
 a.binaries = [entry for entry in a.binaries if not is_test_item(entry[0]) and _native.bundle_library(Path(entry[0]).name)]
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='NRClipBuilder',
           version=version_info,
           icon=str(root / 'src' / 'python' / 'nrclip_builder' / 'resources' / 'assets' / 'icon.ico'),
-          console=smoke_build or environ.get('NRCLIP_CONSOLE') == '1', strip=False, upx=False)
+          console=environ.get('NRCLIP_CONSOLE') == '1', strip=False, upx=False)
 coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name='NRClipBuilder')

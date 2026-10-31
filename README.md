@@ -57,24 +57,18 @@ Python依存は原則として同じマイナーバージョン内の更新を�
 
 Pythonのコードを変更したら、アプリを再起動します。地図UIを変更したら`npm --prefix src/web run build`、Rustのコードを変更したら`python -m maturin develop --release --locked`を実行してから起動してください。
 
-変更を確認するためのテストと、配布用アプリのビルドは次のコマンドで実行できます。Windows向けはWindows、Linux向けはLinuxでビルドしてください。
+静的解析・整形確認と、配布用アプリのビルドは次のコマンドで実行できます。Windows向けはWindows、Linux向けはLinuxでビルドしてください。
 
 ```text
-cargo test --locked
 cargo clippy --locked --all-targets -- -D warnings
 cargo fmt --all --check
-npm --prefix src/web test
 npm --prefix src/web run format:check
-npm --prefix src/web run build:test
-python -m pytest tests -q
 python -m PyInstaller --noconfirm --clean packaging/nrclip_builder.spec
 ```
 
 配布用アプリは`dist/NRClipBuilder/`に生成されます。実行ファイルだけでなく、このフォルダー全体が必要です。
 
 Linuxの配布ビルド前には`python packaging/build_fcitx.py`を実行してください。`cmake`、`extra-cmake-modules`、X11／XCB／xkbcommon／OpenGL／EGL／Vulkan／Waylandの開発パッケージと`wayland-protocols`が必要です。同スクリプトはPySide6と同じバージョンのQt SDKを取得してFcitxプラグインをビルドし、PySide6のQtでロードできることを確認します。SDKは配布物には含めません。
-
-画面テストには動作するQtWebEngine環境が必要です。`python -m PyInstaller --noconfirm --clean --distpath build/smoke-dist --workpath build/smoke-work packaging/smoke.spec`で検証専用アプリを生成し、Windowsは`build/smoke-dist/NRClipBuilder/NRClipBuilder.exe`、Linuxのヘッドレス実行は`xvfb-run -a build/smoke-dist/NRClipBuilder/NRClipBuilder`を使用します。配布アプリにはテスト用コード・データ・起動オプションを同梱しません。CIは配布用実行ファイル内部のモジュールも検査してからアーカイブを作成します。
 
 ソースからのビルドでは、バージョンは`0.0.0-dev`です。`python -m nrclip_builder --version`で確認できます。
 

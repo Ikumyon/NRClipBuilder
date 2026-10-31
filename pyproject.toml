@@ -14,7 +14,7 @@ dependencies = ["PySide6~=6.12.0", "pyshp~=3.1.4", "pyproj~=3.7.2"]
 nrclip-builder = "nrclip_builder.app:main"
 
 [project.optional-dependencies]
-dev = ["pytest~=9.0.2", "pyinstaller~=6.22.3", "maturin~=1.15.0", "zstandard~=0.25.0"]
+dev = ["pyinstaller~=6.22.3", "maturin~=1.15.0"]
 
 [tool.maturin]
 manifest-path = "src/native/Cargo.toml"
@@ -26,4 +26,4 @@ include = [
   { path = "nrclip_builder/resources/map/*", format = ["wheel", "sdist"] },
   { path = "src/web/**/*", format = "sdist" }
 ]
-exclude = ["src/web/node_modules/**/*", "**/*.pdb", "**/tests/**/*", "**/fixtures/**/*", "**/smoke.py"]
+exclude = ["src/web/node_modules/**/*", "**/*.pdb", "**/tests/**/*", "**/fixtures/**/*"]
