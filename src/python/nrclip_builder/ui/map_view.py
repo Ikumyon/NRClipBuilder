@@ -88,7 +88,7 @@ class MapView(QWebEngineView):
         ]}
         self.send({"type": "update", "payload": payload if self.map_ready else self.last_payload})
 
-    def open_preview(self, path):
+    def open_preview(self, path, view, language, strings):
         if self.last_payload is None:
             raise ValueError("No map preview is available")
         folder = Path(str(resource("map"))).resolve()
@@ -96,7 +96,7 @@ class MapView(QWebEngineView):
         html = html.replace('<script src="qrc:///qtwebchannel/qwebchannel.js"></script>', "")
         for name in ("app.css", "app.js"):
             html = html.replace(f'"{name}"', f'"{(folder / name).as_uri()}"')
-        payload = json.dumps(self.last_payload, ensure_ascii=False).replace("<", "\\u003c")
+        payload = json.dumps({"payload": self.last_payload, "view": view, "language": language, "strings": strings}, ensure_ascii=False).replace("<", "\\u003c")
         html = html.replace('<script src=', f'<script>window.NRCLIP_PREVIEW={payload};</script><script src=', 1)
         _native.atomic_write(str(path), html.encode("utf-8"))
         _native.open_external(str(path))

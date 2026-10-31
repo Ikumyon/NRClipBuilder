@@ -1,11 +1,15 @@
 import json
 import urllib.parse
-import urllib.request
 from uuid import uuid4
+
+from PySide6.QtCore import QByteArray, QEventLoop, QTimer, QUrl
+from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 
 from .. import _native
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+SERVER_TIMEOUT = 180
+COMMUNICATION_TIMEOUT = 240
 
 
 def parse_overpass(data, token):
@@ -36,14 +40,62 @@ def parse_overpass(data, token):
 def fetch(bbox, token):
     _native.validate_bbox(bbox)
     w, s, e, n = bbox
-    query = f'[out:json][timeout:25];way["railway"~"^(rail|subway|tram|light_rail|monorail|funicular|abandoned|disused|construction|proposed)$"]({s},{w},{n},{e});out body;>;out skel qt;'
-    request = urllib.request.Request(OVERPASS_URL, data=urllib.parse.urlencode({"data": query}).encode(),
-                                     headers={"User-Agent": "NRClipBuilder/0.2", "Content-Type": "application/x-www-form-urlencoded"})
+    query = f'[out:json][timeout:{SERVER_TIMEOUT}];way["railway"~"^(rail|subway|tram|light_rail|monorail|funicular|abandoned|disused|construction|proposed)$"]({s},{w},{n},{e});out body;>;out skel qt;'
+    return parse_overpass(json.loads(request_overpass(query, token)), token)
+
+
+def request_overpass(query, token):
+    """Qt network I/O runs in the worker's event loop and can always be aborted."""
     token.check()
-    with urllib.request.urlopen(request, timeout=35) as response:
-        chunks = []
-        while chunk := response.read(65536):
+    loop = QEventLoop()
+    manager = QNetworkAccessManager()
+    request = QNetworkRequest(QUrl(OVERPASS_URL))
+    request.setRawHeader(b"User-Agent", b"NRClipBuilder")
+    request.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, "application/x-www-form-urlencoded")
+    reply = manager.post(request, QByteArray(urllib.parse.urlencode({"data": query}).encode()))
+    chunks = []
+    reply.readyRead.connect(lambda: chunks.append(bytes(reply.readAll())))
+    reply.finished.connect(loop.quit)
+    cancelled = False
+    timed_out = False
+    poll = QTimer()
+    poll.setInterval(50)
+
+    def check_cancel():
+        nonlocal cancelled
+        try:
             token.check()
-            chunks.append(chunk)
+        except Exception:
+            cancelled = True
+            reply.abort()
+
+    def timeout():
+        nonlocal timed_out
+        timed_out = True
+        reply.abort()
+
+    deadline = QTimer()
+    deadline.setSingleShot(True)
+    deadline.timeout.connect(timeout)
+    poll.timeout.connect(check_cancel)
+    poll.start()
+    deadline.start(COMMUNICATION_TIMEOUT * 1000)
+    if not reply.isFinished():
+        loop.exec()
+    poll.stop()
+    deadline.stop()
+    chunks.append(bytes(reply.readAll()))
+    body = b"".join(chunks)
+    status = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
+    failure = reply.errorString() if reply.error() != QNetworkReply.NetworkError.NoError else ""
+    if cancelled:
+        token.check()
+    if timed_out:
+        raise TimeoutError(f"Overpass: {COMMUNICATION_TIMEOUT} s")
     token.check()
-    return parse_overpass(json.loads(b"".join(chunks)), token)
+    if failure or status != 200:
+        raise RuntimeError(f"Overpass HTTP {status}: {failure}\n{body.decode('utf-8', errors='replace')[:500]}")
+    data = json.loads(body)
+    if data.get("remark"):
+        raise RuntimeError(f"Overpass: {data['remark']}")
+    return body

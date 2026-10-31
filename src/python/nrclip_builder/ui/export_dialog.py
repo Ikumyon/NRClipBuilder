@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from .icons import ICON_SIZE, icon
+from .segmented_control import SegmentedControl
 
 FORMATS = (("nrclip", "NRC1", ".nrclip"), ("pmtiles", "PMTiles", ".pmtiles"),
            ("geojson", "GeoJSON", ".geojson"), ("overpass", "Turnout JSON", ".json"))
@@ -53,9 +54,11 @@ class ExportDialog(QDialog):
         self.tabs = QTabWidget()
         self.nrc = {}
         self.zoom = {}
-        self.tangent = QCheckBox(self.text("track_mode_tangent"))
+        self.track_mode = SegmentedControl(("point", "tangent"))
+        self.track_mode.setObjectName("trackModeSelector")
+        self.track_mode.set_labels({"point": self.text("track_mode_point"), "tangent": self.text("track_mode_tangent")})
+        self.track_mode.set_value("tangent" if saved.get("nrclip", {}).get("tangent_mode", False) else "point")
         self.curve_merge = QCheckBox(self.text("curve_merge"))
-        self.tangent.setChecked(saved.get("nrclip", {}).get("tangent_mode", False))
         self.curve_merge.setChecked(saved.get("nrclip", {}).get("enable_curve_r_merging", True))
         for format, title, _ in FORMATS:
             content = QWidget()
@@ -71,8 +74,8 @@ class ExportDialog(QDialog):
                     form.addRow(self.text(key), spin)
                     spin.valueChanged.connect(self.validate)
                     spin.lineEdit().textChanged.connect(self.validate)
+                form.addRow(self.text("label_track_mode"), self.track_mode)
                 content_layout.addLayout(form)
-                content_layout.addWidget(self.tangent)
                 content_layout.addWidget(self.curve_merge)
             elif format == "pmtiles":
                 for name, key, default in (("min_zoom", "export_min_zoom", 0), ("max_zoom", "export_max_zoom", 14)):
@@ -130,14 +133,14 @@ class ExportDialog(QDialog):
     def options(self):
         if self.format == "nrclip":
             return {**{key: spin.value() for key, spin in self.nrc.items()},
-                    "tangent_mode": self.tangent.isChecked(), "enable_curve_r_merging": self.curve_merge.isChecked()}
+                    "tangent_mode": self.track_mode.value() == "tangent", "enable_curve_r_merging": self.curve_merge.isChecked()}
         if self.format == "pmtiles":
             return {key: spin.value() for key, spin in self.zoom.items()}
         return {}
 
     def settings(self):
         return {"format": self.format, "nrclip": {**{key: spin.value() for key, spin in self.nrc.items()},
-                "tangent_mode": self.tangent.isChecked(), "enable_curve_r_merging": self.curve_merge.isChecked()},
+                "tangent_mode": self.track_mode.value() == "tangent", "enable_curve_r_merging": self.curve_merge.isChecked()},
                 "pmtiles": {key: spin.value() for key, spin in self.zoom.items()}}
 
     def normalize_path(self):

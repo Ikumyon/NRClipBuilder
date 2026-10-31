@@ -58,7 +58,7 @@ def load_shapefile(path: Path, token):
         return {"type": geometry["type"], "coordinates": coords(geometry["coordinates"])}
 
     cpg = siblings.get(".cpg")
-    encodings = [cpg.read_text(encoding="utf-8-sig").strip()] if cpg else ["utf-8", "cp932"]
+    encodings = [cpg.read_text(encoding="utf-8-sig").strip()] if cpg else ["utf-8", "cp932", "shift_jis", "latin1"]
     if encodings == ["65001"]:
         encodings = ["utf-8"]
     last_error = None

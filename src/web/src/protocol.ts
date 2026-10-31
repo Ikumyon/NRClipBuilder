@@ -20,7 +20,14 @@ export function connectBackend(
       bridge.receive(JSON.stringify({ type: "ready" } satisfies MapEvent));
     });
   } else if (window.NRCLIP_PREVIEW) {
-    onCommand({ type: "update", payload: window.NRCLIP_PREVIEW });
+    const preview = window.NRCLIP_PREVIEW;
+    onCommand({
+      type: "locale",
+      language: preview.language,
+      strings: preview.strings,
+    });
+    onCommand({ type: "view", view: preview.view });
+    onCommand({ type: "update", payload: preview.payload });
   }
   return {
     emit(event: MapEvent) {

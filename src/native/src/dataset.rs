@@ -1,6 +1,6 @@
 use crate::geometry::{BBox, Feature, overlaps, validate_bbox};
 use anyhow::{Context, Result, ensure};
-use regex::{Regex, RegexBuilder};
+use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
@@ -46,25 +46,30 @@ pub struct Filter {
 
 enum Pattern {
     Literal(String),
-    Regex(Regex),
+    Regex(Py<PyAny>),
 }
 impl Pattern {
     fn compile(s: &str, regex: bool) -> Result<Self> {
         if regex {
-            Ok(Self::Regex(
-                RegexBuilder::new(s)
-                    .case_insensitive(true)
-                    .build()
-                    .context("Invalid regular expression")?,
-            ))
+            Python::initialize();
+            Python::attach(|py| {
+                let compiled = py.import("re")?.call_method1("compile", (s, 2))?;
+                Ok(Self::Regex(compiled.unbind()))
+            })
+            .map_err(|error: PyErr| anyhow::anyhow!("Invalid regular expression: {error}"))
         } else {
             Ok(Self::Literal(s.to_lowercase()))
         }
     }
-    fn matches(&self, s: &str) -> bool {
+    fn matches(&self, s: &str) -> Result<bool> {
         match self {
-            Self::Literal(p) => s.contains(p),
-            Self::Regex(p) => p.is_match(s),
+            Self::Literal(p) => Ok(s.to_lowercase().contains(p)),
+            Self::Regex(p) => Python::attach(|py| {
+                p.bind(py)
+                    .call_method1("search", (s,))
+                    .map(|result| !result.is_none())
+            })
+            .map_err(|error| anyhow::anyhow!("Regular expression failed: {error}")),
         }
     }
 }
@@ -102,7 +107,7 @@ impl Dataset {
             let all_text = feature
                 .properties
                 .values()
-                .map(|v| text(v).to_lowercase())
+                .map(text)
                 .collect::<Vec<_>>()
                 .join("\n");
             entries.push(Arc::new(Entry {
@@ -157,23 +162,38 @@ impl Dataset {
                 field_text = filter
                     .fields
                     .iter()
-                    .filter_map(|k| e.search.get(k))
-                    .cloned()
+                    .filter_map(|k| e.feature.properties.get(k))
+                    .map(text)
                     .collect::<Vec<_>>()
                     .join("\n");
                 &field_text
             };
-            if exclude.iter().any(|p| p.matches(haystack)) {
+            let mut excluded = false;
+            for pattern in &exclude {
+                if pattern.matches(haystack)? {
+                    excluded = true;
+                    break;
+                }
+            }
+            if excluded {
                 continue;
             }
-            if !include.is_empty()
-                && if filter.match_all {
-                    !include.iter().all(|p| p.matches(haystack))
-                } else {
-                    !include.iter().any(|p| p.matches(haystack))
+            if !include.is_empty() {
+                let mut matched = filter.match_all;
+                for pattern in &include {
+                    let found = pattern.matches(haystack)?;
+                    if filter.match_all && !found {
+                        matched = false;
+                        break;
+                    }
+                    if !filter.match_all && found {
+                        matched = true;
+                        break;
+                    }
                 }
-            {
-                continue;
+                if !matched {
+                    continue;
+                }
             }
             selected.push(i);
         }
@@ -292,10 +312,39 @@ mod tests {
     fn regex_errors_propagate() {
         let f = Filter {
             regex: true,
-            keywords: vec!["(?=x)".into()],
+            keywords: vec!["[".into()],
             ..Default::default()
         };
         assert!(sample().select(&f, &Cancellation::default()).is_err());
+    }
+    #[test]
+    fn python_regex_uses_original_text_and_full_syntax() {
+        for expression in [
+            r"(?=Rail)Rail",
+            r"(?<=Rail )日本語",
+            r"(?-i:Rail)",
+            r"(Rail)\s日本語",
+        ] {
+            let filter = Filter {
+                regex: true,
+                keywords: vec![expression.into()],
+                ..Default::default()
+            };
+            assert_eq!(
+                sample().select(&filter, &Cancellation::default()).unwrap(),
+                vec![0]
+            );
+        }
+        let data = Dataset::parse(r#"[{"id":"x","properties":{"name":"Rail Rail"},"geometry":{"type":"Point","coordinates":[0,0]}}]"#, &Cancellation::default()).unwrap();
+        let filter = Filter {
+            regex: true,
+            keywords: vec![r"(Rail) \1".into()],
+            ..Default::default()
+        };
+        assert_eq!(
+            data.select(&filter, &Cancellation::default()).unwrap(),
+            vec![0]
+        );
     }
     #[test]
     fn crossing_bbox_is_selected() {

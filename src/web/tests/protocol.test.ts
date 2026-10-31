@@ -86,13 +86,21 @@ test("a Qt callback arriving after unmount cannot reopen the channel", () => {
 });
 
 test("standalone browser preview uses the same map commands", () => {
-  globalThis.window = { NRCLIP_PREVIEW: empty } as Window & typeof globalThis;
+  const view = { lat: 43, lng: 141, zoom: 12 };
+  const strings = { map_elevation: "標高" };
+  globalThis.window = {
+    NRCLIP_PREVIEW: { payload: empty, view, language: "ja-jp", strings },
+  } as Window & typeof globalThis;
   const commands: Command[] = [];
   const backend = connectBackend(
     (command) => commands.push(command),
     () => assert.fail("preview is not a Qt connection"),
   );
-  assert.deepEqual(commands, [{ type: "update", payload: empty }]);
+  assert.deepEqual(commands, [
+    { type: "locale", language: "ja-jp", strings },
+    { type: "view", view },
+    { type: "update", payload: empty },
+  ]);
   backend.dispose();
 });
 

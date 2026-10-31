@@ -35,6 +35,12 @@ export interface MapPayload {
   bbox: BBox | null;
   history: { id: string; name: string; bbox: BBox }[];
 }
+export interface PreviewState {
+  payload: MapPayload;
+  view: View;
+  language: string;
+  strings: Strings;
+}
 export type Command =
   | { type: "update"; payload: MapPayload }
   | { type: "draw"; active: boolean }
@@ -44,7 +50,7 @@ export type Command =
   | { type: "locale"; language: string; strings: Strings }
   | { type: "view"; view: View };
 export type MapEvent =
-  | { type: "ready" | "rendered" | "fetch_osm" | "finish_draft" }
+  | { type: "ready" | "rendered" | "fetch_osm" | "finish_draft" | "draw_end" }
   | { type: "edit"; layer_id: string; feature: MapFeature }
   | { type: "history"; id: string }
   | { type: "bbox"; bbox: BBox }
@@ -73,7 +79,7 @@ declare global {
       transport: unknown,
       ready: (channel: { objects: { bridge: QtBridge } }) => void,
     ) => unknown;
-    NRCLIP_PREVIEW?: MapPayload;
+    NRCLIP_PREVIEW?: PreviewState;
     nrclipMap?: {
       inspect(): {
         points: Position[];

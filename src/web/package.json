@@ -10,6 +10,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "build:test": "node tests/build-browser.mjs",
     "format:check": "prettier --check src tests build.mjs index.html package.json tsconfig.json",
     "build": "npm run typecheck && node build.mjs"
   },

@@ -47,6 +47,7 @@ class ApplicationService(QObject):
         self.draft_committing = False
         self.save_pending = False
         self.initialized = False
+        self.strings = {}
         self.save_timer = QTimer(self)
         self.save_timer.setSingleShot(True)
         self.save_timer.setInterval(750)
@@ -55,6 +56,9 @@ class ApplicationService(QObject):
         self.render_timer.setSingleShot(True)
         self.render_timer.setInterval(180)
         self.render_timer.timeout.connect(self.render)
+
+    def text(self, key, **values):
+        return self.strings.get(key, key).format(**values)
 
     def start(self):
         def read(token):
@@ -74,7 +78,7 @@ class ApplicationService(QObject):
             self.render()
 
         def failure(error):
-            self.failed.emit(f"Session could not be restored: {error}")
+            self.failed.emit(f"{self.text('session_restore_failed')}\n{error}")
             # Do not overwrite an unreadable session with a new empty session.
             self.ready.emit()
         self.jobs.submit("startup", read, done, failure)
@@ -108,7 +112,7 @@ class ApplicationService(QObject):
 
         def failed(error):
             self.save_pending = True
-            self.failed.emit(f"Session save failed: {error}")
+            self.failed.emit(f"{self.text('session_save_failed')}\n{error}")
         self.jobs.submit("save", write, lambda _: self.save_timer.start() if self.save_pending else None, failed)
 
     def add_features(self, name, features, source=None):
@@ -136,10 +140,12 @@ class ApplicationService(QObject):
             self.state.registered_sources = [layer.source, *[s for s in self.state.registered_sources if s != layer.source]]
             self.state.last_directory = str(Path(layer.source).parent)
         self.touch()
+        if layer.kind == "data":
+            self.message.emit(self.text("msg_load_success", count=self.engine.capture(layer.id).count))
 
     def fetch_osm(self):
         if not self.state.bbox:
-            raise ValueError("Select a BBox before fetching OSM")
+            raise ValueError(self.text("msg_bbox_warn"))
         bbox = list(self.state.bbox)
         layer = Layer("OSM")
 
@@ -199,6 +205,8 @@ class ApplicationService(QObject):
         if not layer or layer.kind == "history":
             return
         self.state.layers.remove(layer)
+        self.undo = [(key, old) for key, old in self.undo if key != layer_id]
+        self.edits = deque(edit for edit in self.edits if edit[0] != layer_id)
         if layer.kind != "tile":
             self.engine.remove(layer_id)
         self.selections.pop(layer_id, None)
@@ -209,7 +217,7 @@ class ApplicationService(QObject):
     def edit(self, layer_id, feature, record_undo=True, committed=None):
         layer = self.state.layer(layer_id)
         if not layer or layer.kind != "data":
-            raise ValueError("Select an editable data layer")
+            raise ValueError(self.text("editable_layer_required"))
         self.edits.append((layer_id, [feature] if isinstance(feature, dict) else feature, record_undo, committed))
         self._next_edit()
 
@@ -231,6 +239,9 @@ class ApplicationService(QObject):
                 if committed:
                     committed()
                 self.touch()
+            elif committed:
+                self.draft_committing = False
+                self.changed.emit()
             self.edit_busy = False
             self._next_edit()
 
@@ -239,8 +250,8 @@ class ApplicationService(QObject):
             self.draft_committing = False
             if str(error) == "cancelled":
                 self.edits.clear()
-                self.message.emit("Cancelled")
-            else:
+                self.message.emit(self.text("operation_cancelled"))
+            elif self.state.layer(layer_id) is not None:
                 self.failed.emit(str(error))
             self.changed.emit()
             self._next_edit()
@@ -249,9 +260,25 @@ class ApplicationService(QObject):
     def undo_edit(self):
         if self.edit_busy or self.edits:
             return
-        if self.undo:
+        while self.undo:
             layer_id, feature = self.undo.pop()
-            self.edit(layer_id, feature, False)
+            layer = self.state.layer(layer_id)
+            if layer and layer.kind == "data":
+                self.edit(layer_id, feature, False)
+                break
+
+    def add_map(self, name, url, attribution):
+        item = {"name": name, "url": url, "attribution": attribution}
+        self.state.registered_maps = [item, *[value for value in self.state.registered_maps if value["url"] != url]]
+        self.state.layers.append(Layer(name, kind="tile", url=url, attribution=attribution))
+        self.touch()
+
+    def delete_history(self, ids):
+        self.state.history = [item for item in self.state.history if item["id"] not in ids]
+        self.state.selected_history = None
+        self.state.bbox = None
+        self.state.filter["bbox"] = None
+        self.rebuild_history()
 
     def finish_draft(self, name):
         if self.draft_committing:
@@ -278,7 +305,7 @@ class ApplicationService(QObject):
         features = []
         for segment in segments:
             structure = segment.get("structure", "ground")
-            props = {"name": name, "railway": "rail", "layer": {"ground": "0", "bridge": "1", "tunnel": "-1"}[structure]}
+            props = {"name": name, "railway": "rail", "_manual_segment": True, "layer": {"ground": "0", "bridge": "1", "tunnel": "-1"}[structure]}
             if structure != "ground":
                 props["bridge" if structure == "bridge" else "tunnel"] = "yes"
             features.append({"type": "Feature", "id": uuid4().hex, "properties": props,
@@ -292,11 +319,11 @@ class ApplicationService(QObject):
 
     def prepare_export(self, history_id=None):
         if self.edit_busy or self.edits:
-            raise ValueError("Wait for pending edits before exporting")
+            raise ValueError(self.text("pending_edits"))
         if history_id is not None:
             item = next((item for item in self.state.history if item["id"] == history_id), None)
             if item is None:
-                raise ValueError("Select an output history entry")
+                raise ValueError(self.text("history_selection_required"))
             bbox = tuple(item["bbox"])
             batch = _native.ExportBatch.from_history(json.dumps(item["geojson"], ensure_ascii=False), bbox)
             return ExportRequest(batch, (item["name"],), bbox, "{}", True)
@@ -308,11 +335,11 @@ class ApplicationService(QObject):
 
     def export(self, path, format, options, request):
         if not request.names:
-            raise ValueError("Check at least one line data layer")
+            raise ValueError(self.text("export_no_targets"))
         if request.bbox is None:
-            raise ValueError("Select a BBox before exporting")
+            raise ValueError(self.text("export_bbox_missing"))
         if self.jobs.running("export"):
-            raise ValueError("An export is already running")
+            raise ValueError(self.text("export_running"))
         options = {**options, "name": Path(path).stem}
 
         def convert(token):
@@ -326,10 +353,11 @@ class ApplicationService(QObject):
         def done(geojson):
             item = {"id": uuid4().hex, "name": options["name"], "bbox": list(request.bbox),
                     "timestamp": datetime.now(timezone.utc).isoformat(), "geojson": geojson}
+            self.state.history = [old for old in self.state.history if not (old["name"] == item["name"] and old["bbox"] == item["bbox"])]
             self.state.history.insert(0, item)
             self.state.last_directory = str(Path(path).parent)
             self.rebuild_history()
-            self.message.emit(str(path))
+            self.message.emit(self.text("export_completed", path=path))
         self.jobs.submit("export", convert, done)
 
     def rebuild_history(self):

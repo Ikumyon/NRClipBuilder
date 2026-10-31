@@ -1,6 +1,10 @@
 import * as L from "leaflet";
-import type * as GeoJSON from "geojson";
-import { fetchElevation, formatElevationError } from "./elevation.ts";
+import { formatElevationError } from "./elevation.ts";
+import {
+  createElevationSampler,
+  ElevationSampleError,
+} from "./elevation-sampler.ts";
+import { draftSegments, geometryVertices, lineStyle } from "./geometry.ts";
 import type {
   BBox,
   Collection,
@@ -25,8 +29,9 @@ export function createMapController(
 ) {
   const map = L.map(container, {
     preferCanvas: true,
-    doubleClickZoom: false,
   }).setView([35.68, 139.76], 6);
+  const resize = new ResizeObserver(() => map.invalidateSize());
+  resize.observe(container);
   type FeatureEntry = { encoded: string; feature: MapFeature; path: L.Layer };
   type DataEntry = {
     group: L.GeoJSON<Properties>;
@@ -38,6 +43,7 @@ export function createMapController(
   const historyBounds = L.layerGroup().addTo(map),
     boundsHandles = L.layerGroup().addTo(map);
   const drawing = L.layerGroup().addTo(map),
+    draftVertices = L.layerGroup().addTo(map),
     vertices = L.layerGroup().addTo(map);
   let selected: string | null = null;
   let editTarget: { layerId: string; feature: MapFeature } | null = null;
@@ -63,7 +69,7 @@ export function createMapController(
     longitude: number;
   } | null = null;
   let disposed = false;
-  const elevationRequests = new Set<AbortController>();
+  const sampler = createElevationSampler();
   function elevationErrorText() {
     if (!elevationFailure) return "";
     const { error, timedOut, latitude, longitude } = elevationFailure;
@@ -92,16 +98,6 @@ export function createMapController(
   ) {
     if (!disposed) sendEvent({ type, ...payload } as MapEvent);
   }
-  function color(props: Properties) {
-    return props.tunnel === "yes" || Number(props.layer) < 0
-      ? "#7950f2"
-      : props.bridge === "yes" || Number(props.layer) > 0
-        ? "#e8590c"
-        : "#1971c2";
-  }
-  function style(feature: GeoJSON.Feature<Geometry, Properties> | undefined) {
-    return { color: color(feature?.properties || {}), weight: 4 };
-  }
   function pointIcon(className: string) {
     return L.divIcon({ className, iconSize: [10, 10], iconAnchor: [5, 5] });
   }
@@ -115,6 +111,31 @@ export function createMapController(
     const node = document.createElement("span");
     node.textContent = String(text);
     return node;
+  }
+  function segmentInfo(start: Position, end: Position): HTMLElement {
+    const node = escapeNode("");
+    const distance = map.distance(latlng(start), latlng(end));
+    const prefix = `${label("map_distance", "Distance")}: ${distance.toFixed(1)} m`;
+    node.textContent = `${prefix}\n${label("map_slope", "Gradient")}: …`;
+    const first = start.slice(),
+      last = end.slice();
+    void Promise.all([sampler.sample(first), sampler.sample(last)])
+      .then(([a, b]) => {
+        if (disposed) return;
+        node.textContent = `${label("map_elevation", "Elevation")}: ${a} m → ${b} m\n${prefix}\n${label("map_slope", "Gradient")}: ${distance > 0 ? (((b - a) / distance) * 1000).toFixed(1) + " ‰" : "—"}`;
+      })
+      .catch((error: unknown) => {
+        if (!disposed)
+          node.textContent = `${prefix}\n${sampleErrorText(error)}`;
+      });
+    return node;
+  }
+  function sampleErrorText(error: unknown) {
+    return formatElevationError(
+      error instanceof ElevationSampleError ? error.original : error,
+      error instanceof ElevationSampleError && error.timedOut,
+      strings,
+    );
   }
 
   function editableLines(geometry: Geometry): Position[][] {
@@ -136,12 +157,28 @@ export function createMapController(
     editTarget = target;
     for (const line of editableLines(target.feature.geometry)) {
       for (let index = 0; index < line.length; index++) {
+        const originalPosition = line[index].slice();
         const marker = L.marker(latlng(line[index]), {
           draggable: true,
           icon: pointIcon("vertex"),
         }).addTo(vertices);
+        marker.on("drag", () => {
+          const position = nearestPoint(marker.getLatLng(), originalPosition);
+          marker.setLatLng(position);
+          line[index] = coordinate(position);
+          const path = dataLayers.get(layerId)?.features.get(feature.id)?.path;
+          if (path instanceof L.Polyline)
+            path.setLatLngs(
+              editableLines(target.feature.geometry).map((part) =>
+                part.map(latlng),
+              ),
+            );
+        });
+        marker.on("click", (event) => {
+          if (drawMode) addPoint(marker.getLatLng());
+          L.DomEvent.stopPropagation(event);
+        });
         marker.on("dragend", () => {
-          line[index] = coordinate(marker.getLatLng());
           emit("edit", { layer_id: layerId, feature: target.feature });
         });
       }
@@ -194,7 +231,12 @@ export function createMapController(
         const features = new Map<string, FeatureEntry>();
         const group = L.geoJSON<Properties>(undefined, {
           pane: paneName,
-          style,
+          style: (feature) =>
+            lineStyle(
+              feature?.properties || {},
+              layer.kind === "history",
+              layer.name.toLowerCase().includes("osm"),
+            ),
           pointToLayer: (_, p) =>
             L.circleMarker(p, { radius: 4, pane: paneName }),
           onEachFeature: (feature, path) => {
@@ -205,16 +247,26 @@ export function createMapController(
               path,
             });
             path.on("click", (event) => {
-              L.DomEvent.stopPropagation(event.originalEvent);
+              if (drawMode) return;
+              L.DomEvent.stopPropagation(event);
               selectFeature(layer.id, typed);
             });
-            path.bindTooltip(() =>
-              escapeNode(
+            path.bindTooltip(() => {
+              const node = escapeNode(
                 Object.entries(feature.properties || {})
                   .map(([k, v]) => k + ": " + v)
                   .join("\n"),
-              ),
-            );
+              );
+              if (typed.properties._manual_segment === true) {
+                for (const line of editableLines(typed.geometry)) {
+                  if (line.length > 1) {
+                    node.append("\n");
+                    node.appendChild(segmentInfo(line[0], line.at(-1)!));
+                  }
+                }
+              }
+              return node;
+            });
           },
         });
         entry = { group, features, kind: layer.kind };
@@ -260,7 +312,11 @@ export function createMapController(
           ],
           { color: "#f08c00", weight: 1, fillOpacity: 0.03 },
         ).addTo(historyBounds);
-        rect.bindTooltip(() => escapeNode(item.name));
+        rect.bindTooltip(() => escapeNode(item.name), {
+          permanent: true,
+          direction: "top",
+          className: "history-label",
+        });
         rect.on("click", (event) => {
           L.DomEvent.stopPropagation(event);
           emit("history", { id: item.id });
@@ -289,12 +345,14 @@ export function createMapController(
       [s, e, 2, 1],
       [n, e, 2, 3],
     ];
+    const handles: { marker: L.Marker; xi: number; yi: number }[] = [];
     for (const [lat, lon, xi, yi] of corners) {
       const marker = L.marker([lat, lon], {
         draggable: true,
         icon: pointIcon("bbox-handle"),
       }).addTo(boundsHandles);
-      marker.on("dragend", () => {
+      handles.push({ marker, xi, yi });
+      marker.on("drag", () => {
         if (!bbox) return;
         const b = [...bbox];
         b[xi] = marker.getLatLng().lng;
@@ -305,20 +363,35 @@ export function createMapController(
           Math.max(b[0], b[2]),
           Math.max(b[1], b[3]),
         ];
-        setBBox(normalized);
-        emit("bbox", { bbox: normalized });
+        bbox = normalized;
+        bboxRect?.setBounds([
+          [bbox[1], bbox[0]],
+          [bbox[3], bbox[2]],
+        ]);
+        for (const handle of handles)
+          if (handle.marker !== marker)
+            handle.marker.setLatLng([bbox[handle.yi], bbox[handle.xi]]);
+      });
+      marker.on("dragend", () => {
+        if (bbox && bbox[0] < bbox[2] && bbox[1] < bbox[3]) {
+          const value = bbox;
+          setBBox(value);
+          emit("bbox", { bbox: value });
+        }
       });
     }
   }
 
   function toggleBBox() {
     selecting = !selecting;
-    renderDrawPreview();
+    if (selecting && drawMode) {
+      drawMode = false;
+      emit("draw_end");
+    }
+    syncMode();
     setHint(
       selecting ? label("map_select_btn_active", "Drag to select BBox") : "",
     );
-    if (selecting) map.dragging.disable();
-    else map.dragging.enable();
   }
   map.on("mousedown", (event) => {
     if (selecting) selectionStart = event.latlng;
@@ -338,7 +411,7 @@ export function createMapController(
     selectionPreview = null;
     selectionStart = null;
     selecting = false;
-    map.dragging.enable();
+    syncMode();
     setHint("");
     const b: BBox = [
       bounds.getWest(),
@@ -352,36 +425,78 @@ export function createMapController(
     }
   });
 
-  function nearestPoint(p: L.LatLng) {
+  function nearestPoint(p: L.LatLng, excluded?: Position) {
     let result = p,
       best = 12;
     const origin = map.latLngToContainerPoint(p);
     for (const entry of dataLayers.values()) {
       if (!map.hasLayer(entry.group)) continue;
       for (const item of entry.features.values())
-        for (const line of editableLines(item.feature.geometry))
-          for (const c of line) {
-            const q = L.latLng(c[1], c[0]),
-              distance = origin.distanceTo(map.latLngToContainerPoint(q));
-            if (distance < best) {
-              best = distance;
-              result = q;
-            }
+        for (const c of geometryVertices(item.feature.geometry)) {
+          if (excluded && c[0] === excluded[0] && c[1] === excluded[1])
+            continue;
+          const q = L.latLng(c[1], c[0]),
+            distance = origin.distanceTo(map.latLngToContainerPoint(q));
+          if (distance < best) {
+            best = distance;
+            result = q;
           }
+        }
     }
     return result;
   }
   function renderDraft() {
     drawing.clearLayers();
+    draftVertices.clearLayers();
     for (const segment of segments)
-      L.polyline(segment.coordinates.map(latlng), {
-        color: color({
-          layer: { ground: 0, bridge: 1, tunnel: -1 }[segment.structure],
-        }),
-        weight: 4,
-      }).addTo(drawing);
-    for (const p of points)
-      L.circleMarker(latlng(p), { radius: 4, color: "#d6336c" }).addTo(drawing);
+      L.polyline(
+        segment.coordinates.map(latlng),
+        lineStyle({ [segment.structure]: "yes" }),
+      )
+        .bindTooltip(() =>
+          segmentInfo(segment.coordinates[0], segment.coordinates[1]),
+        )
+        .addTo(drawing);
+    points.forEach((p, index) => {
+      const marker = L.marker(latlng(p), {
+        draggable: drawMode,
+        icon: pointIcon("vertex draft-vertex"),
+      }).addTo(draftVertices);
+      marker.on("drag", () => {
+        marker.setLatLng(nearestPoint(marker.getLatLng()));
+        points[index] = coordinate(marker.getLatLng());
+        rebuildSegments();
+        drawing.clearLayers();
+        for (const segment of segments)
+          L.polyline(
+            segment.coordinates.map(latlng),
+            lineStyle({ [segment.structure]: "yes" }),
+          )
+            .bindTooltip(() =>
+              segmentInfo(segment.coordinates[0], segment.coordinates[1]),
+            )
+            .addTo(drawing);
+        renderDrawPreview();
+      });
+      marker.on("dragend", () => {
+        draftChanged();
+        void sampler.sample(points[index]).catch(() => {});
+        if (drawCursor) scheduleElevation(drawCursor, 0);
+      });
+      marker.on("contextmenu", (event) => {
+        L.DomEvent.stopPropagation(event);
+        L.DomEvent.preventDefault(event.originalEvent);
+        if (!drawMode) return;
+        points.splice(index, 1);
+        segments.splice(index === 0 ? 0 : index - 1, 1);
+        draftChanged();
+        if (drawCursor) scheduleElevation(drawCursor, 0);
+      });
+      marker.on("click", (event) => {
+        L.DomEvent.stopPropagation(event);
+        if (drawMode) addPoint(marker.getLatLng());
+      });
+    });
     renderDrawPreview();
   }
   function renderDrawPreview() {
@@ -392,27 +507,52 @@ export function createMapController(
     }
     const coordinates = [latlng(points.at(-1)!), nearestPoint(drawCursor)];
     const options: L.PolylineOptions = {
-      color: color({ layer: { ground: 0, bridge: 1, tunnel: -1 }[structure] }),
-      weight: 4,
+      ...lineStyle({ [structure]: "yes" }),
       interactive: false,
     };
     if (drawPreview) drawPreview.setLatLngs(coordinates).setStyle(options);
     else drawPreview = L.polyline(coordinates, options).addTo(map);
   }
   function draftChanged() {
+    rebuildSegments();
     renderDraft();
     emit("draft", { draft: { points, segments } });
   }
-  map.on("click", (event) => {
+  function rebuildSegments() {
+    segments = draftSegments(
+      points,
+      segments.map((segment) => segment.structure),
+    );
+  }
+  function syncMode() {
+    if (drawMode) {
+      selecting = false;
+      selectionStart = null;
+      if (selectionPreview) map.removeLayer(selectionPreview);
+      selectionPreview = null;
+    }
+    if (drawMode || selecting) map.doubleClickZoom.disable();
+    else map.doubleClickZoom.enable();
+    if (selecting) map.dragging.disable();
+    else map.dragging.enable();
+    map.getContainer().style.cursor = drawMode ? "crosshair" : "";
+    renderDraft();
+  }
+  function addPoint(cursor: L.LatLng) {
     if (!drawMode || selecting) return;
-    drawCursor = event.latlng;
-    const p = coordinate(nearestPoint(event.latlng));
+    drawCursor = cursor;
+    const p = coordinate(nearestPoint(cursor));
     if (points.length && map.distance(latlng(points.at(-1)!), latlng(p)) < 0.05)
       return;
     if (points.length)
       segments.push({ structure, coordinates: [points.at(-1)!, p] });
     points.push(p);
+    void sampler.sample(p).catch(() => {});
     draftChanged();
+    scheduleElevation(cursor, 0);
+  }
+  map.on("click", (event) => {
+    addPoint(event.latlng);
   });
   map.on("dblclick", () => {
     if (drawMode && segments.length) emit("finish_draft");
@@ -421,9 +561,17 @@ export function createMapController(
     if (drawMode) {
       drawCursor = event.latlng;
       L.DomEvent.preventDefault(event.originalEvent);
+      if (!points.length) {
+        drawMode = false;
+        syncMode();
+        notify();
+        emit("draw_end");
+        return;
+      }
       points.pop();
       segments.pop();
       draftChanged();
+      scheduleElevation(event.latlng, 0);
     }
   });
   map.on("mousemove", (event) => {
@@ -447,81 +595,79 @@ export function createMapController(
   });
   let elevationTimer: ReturnType<typeof setTimeout> | undefined;
   let elevationSequence = 0;
-  map.on("mousemove", (event) => {
+  function scheduleElevation(cursor: L.LatLng, delay = 600) {
     clearTimeout(elevationTimer);
     const sequence = ++elevationSequence;
-    for (const request of elevationRequests) request.abort();
-    if (!elevation && !elevationFailure) {
-      elevation = label("map_elevation", "Elevation") + ": …";
-      notify();
+    const p = drawMode ? nearestPoint(cursor) : cursor;
+    const previous = drawMode ? points.at(-1)?.slice() : undefined;
+    const distance = previous ? map.distance(latlng(previous), p) : 0;
+    function measurementText(height: string, gradient: string) {
+      let text = label("map_elevation", "Elevation") + ": " + height;
+      if (previous)
+        text +=
+          " · " +
+          label("map_distance", "Distance") +
+          ": " +
+          distance.toFixed(1) +
+          " m · " +
+          label("map_slope", "Gradient") +
+          ": " +
+          gradient;
+      return text;
     }
+    elevation = measurementText("…", distance > 0 ? "…" : "—");
+    notify();
     elevationTimer = setTimeout(async () => {
-      const p = event.latlng;
-      const request = new AbortController();
-      elevationRequests.add(request);
-      let timedOut = false;
-      const timeout = setTimeout(() => {
-        timedOut = true;
-        request.abort();
-      }, 5000);
       try {
-        const height = await fetchElevation(p.lng, p.lat, request.signal);
+        const heightRequest = sampler.sample(coordinate(p));
+        const startRequest = previous
+          ? sampler.sample(previous)
+          : heightRequest;
+        const [height, startHeight] = await Promise.all([
+          heightRequest,
+          startRequest,
+        ]);
         if (disposed || sequence !== elevationSequence) return;
-        let text = label("map_elevation", "Elevation") + ": " + height + " m";
-        if (drawMode && points.length) {
-          const distance = map.distance(latlng(points.at(-1)!), p);
-          text +=
-            " · " +
-            label("map_distance", "Distance") +
-            ": " +
-            distance.toFixed(1) +
-            " m";
-          const previous = points.at(-1)!;
-          if (previous.length > 2 && distance > 0)
-            text +=
-              " · " +
-              label("map_slope", "Gradient") +
-              ": " +
-              (((height - previous[2]) / distance) * 1000).toFixed(1) +
-              " ‰";
-        }
-        elevation = text;
+        elevation = measurementText(
+          height + " m",
+          distance > 0
+            ? (((height - startHeight) / distance) * 1000).toFixed(1) + " ‰"
+            : "—",
+        );
         elevationFailure = null;
         notify();
-        if (
-          drawMode &&
-          points.length &&
-          map.distance(latlng(points.at(-1)!), p) < 1
-        ) {
-          points.at(-1)![2] = height;
-          emit("draft", { draft: { points, segments } });
-        }
       } catch (error) {
         if (!disposed && sequence === elevationSequence) {
           elevation = "";
           elevationFailure = {
-            error,
-            timedOut,
-            latitude: p.lat,
-            longitude: p.lng,
+            error:
+              error instanceof ElevationSampleError ? error.original : error,
+            timedOut: error instanceof ElevationSampleError && error.timedOut,
+            latitude:
+              error instanceof ElevationSampleError ? error.point[1] : p.lat,
+            longitude:
+              error instanceof ElevationSampleError ? error.point[0] : p.lng,
           };
           console.error("GSI elevation request failed", elevationErrorText());
           notify();
         }
-      } finally {
-        clearTimeout(timeout);
-        elevationRequests.delete(request);
       }
-    }, 600);
-  });
+    }, delay);
+  }
+  map.on("mousemove", (event) => scheduleElevation(event.latlng));
 
   function command(message: Command) {
     if (message.type === "update") update(message.payload);
     if (message.type === "draw") {
       drawMode = message.active;
       if (!drawMode) drawCursor = null;
-      renderDrawPreview();
+      syncMode();
+      setHint(
+        selecting ? label("map_select_btn_active", "Drag to select BBox") : "",
+      );
       vertices.clearLayers();
+      editTarget = null;
+      scheduleElevation(drawCursor ?? map.getCenter(), 0);
     }
     if (message.type === "structure") {
       structure = message.value;
@@ -541,7 +687,9 @@ export function createMapController(
     if (message.type === "draft") {
       points = message.draft.points || [];
       segments = message.draft.segments || [];
+      rebuildSegments();
       renderDraft();
+      if (drawCursor) scheduleElevation(drawCursor, 0);
     }
     if (message.type === "fit" && message.bbox) {
       const [w, s, e, n] = message.bbox;
@@ -554,6 +702,7 @@ export function createMapController(
       strings = message.strings;
       document.documentElement.lang = message.language;
       notify();
+      renderDraft();
     }
     if (message.type === "view" && !initializedView) {
       map.setView([message.view.lat, message.view.lng], message.view.zoom);
@@ -564,6 +713,10 @@ export function createMapController(
   return {
     command,
     toggleBBox,
+    containerPoint: (position: Position) => {
+      const p = map.latLngToContainerPoint(latlng(position));
+      return [p.x, p.y];
+    },
     inspect: () => ({
       points: structuredClone(points),
       segments: structuredClone(segments),
@@ -571,12 +724,17 @@ export function createMapController(
         (sum, entry) => sum + entry.features.size,
         0,
       ),
+      view: { ...map.getCenter(), zoom: map.getZoom() },
+      bbox: bbox?.slice() ?? null,
+      drawMode,
+      selecting,
     }),
     destroy() {
       disposed = true;
       clearTimeout(viewTimer);
       clearTimeout(elevationTimer);
-      for (const request of elevationRequests) request.abort();
+      sampler.destroy();
+      resize.disconnect();
       map.remove();
     },
   };

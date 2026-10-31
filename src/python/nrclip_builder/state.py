@@ -30,6 +30,7 @@ class AppState:
     filter: dict = field(default_factory=dict)
     export_options: dict = field(default_factory=dict)
     registered_sources: list[str] = field(default_factory=list)
+    registered_maps: list[dict[str, str]] = field(default_factory=list)
     last_directory: str = ""
 
     def layer(self, layer_id):

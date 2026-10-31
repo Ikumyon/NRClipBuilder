@@ -14,7 +14,6 @@ use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 
 use crate::geo::{inverse_geodesic, latlon_to_mercator, merc_y_to_lat_rad};
-use crate::hobby;
 use crate::nrc1::NrclipFile;
 use crate::types::{
     Clip, Collection, ModMeta, ModRelFile, Track, TrackKind, TrackKindHorizon, TrackTexture,
@@ -285,15 +284,10 @@ pub fn convert(json: &str, options: &ExportOptions, cancel: &Cancellation) -> Re
     anyhow::ensure!(!osm.ways.is_empty(), "No railway lines to export");
     cancel.check()?;
     let routes = merge_ways_into_routes(&osm);
+    let projection =
+        crate::reduction::Projection::new(routes.route_coords.iter().flatten().copied());
     cancel.check()?;
-    let simplified = simplify_routes(
-        &routes,
-        &osm.node_layer,
-        &osm.node_track_type,
-        options,
-        cancel,
-    )?;
-    let simplified = subdivide_long_segments(simplified, &routes.route_coords, options.max_spacing);
+    let simplified = simplify_routes(&routes, &osm, options, projection, cancel)?;
     cancel.check()?;
     let mut tracks = build_track_nodes(
         &simplified,
@@ -303,12 +297,9 @@ pub fn convert(json: &str, options: &ExportOptions, cancel: &Cancellation) -> Re
         options.tangent_mode,
         &HashMap::new(),
     );
-    anyhow::ensure!(
-        !tracks.is_empty() && tracks.len() <= MAX_TRACK_NODES,
-        "Track node count must be between 1 and {MAX_TRACK_NODES}"
-    );
     attach_branches(&mut tracks, &simplified, &routes);
     close_routes(&mut tracks, &simplified, &routes);
+    validate_node_count(tracks.len())?;
     if options.tangent_mode {
         for track in &mut tracks {
             if track.attached_to_id != 0 {
@@ -323,7 +314,16 @@ pub fn convert(json: &str, options: &ExportOptions, cancel: &Cancellation) -> Re
         default_track_kinds(),
         Vec::new(),
         options,
+        projection.center,
     )
+}
+
+fn validate_node_count(count: usize) -> Result<()> {
+    anyhow::ensure!(
+        count > 0 && count <= MAX_TRACK_NODES,
+        "Final track node count {count} exceeds the supported range 1..={MAX_TRACK_NODES}"
+    );
+    Ok(())
 }
 
 fn parse_osm_data(json: &str, railway_types: &[String]) -> Result<OsmData> {
@@ -672,296 +672,58 @@ fn find_best_continuation(
 
 fn simplify_routes(
     rd: &RouteData,
-    node_layer: &HashMap<u64, i32>,
-    node_track_type: &HashMap<u64, i32>,
+    osm: &OsmData,
     options: &ExportOptions,
+    projection: crate::reduction::Projection,
     cancel: &Cancellation,
 ) -> Result<Vec<Vec<(usize, f64, f64)>>> {
     rd.routes
         .iter()
-        .zip(rd.route_coords.iter())
+        .zip(&rd.route_coords)
         .map(|(route, coords)| {
             cancel.check()?;
-            let mut keep = vec![false; coords.len()];
-            keep[0] = true;
-            *keep.last_mut().expect("non-empty coords") = true;
-
-            // Force keep junction nodes and layer-change boundaries
-            for (i, &nid) in route.iter().enumerate() {
-                if rd.junction_nodes.contains(&nid) {
-                    keep[i] = true;
+            let mut protected = vec![false; coords.len()];
+            protected[0] = true;
+            *protected.last_mut().unwrap() = true;
+            for (i, node) in route.iter().enumerate() {
+                if rd.junction_nodes.contains(node) {
+                    protected[i] = true;
                 }
-                if i > 0 {
-                    let prev_layer = node_layer.get(&route[i - 1]).copied().unwrap_or(0);
-                    let cur_layer = node_layer.get(&nid).copied().unwrap_or(0);
-                    if prev_layer != cur_layer
-                        || node_track_type.get(&route[i - 1]) != node_track_type.get(&nid)
-                    {
-                        keep[i - 1] = true;
-                        keep[i] = true;
+                if i > 0
+                    && (osm.node_layer.get(&route[i - 1]) != osm.node_layer.get(node)
+                        || osm.node_track_type.get(&route[i - 1]) != osm.node_track_type.get(node)
+                        || osm.node_maxspeed.get(&route[i - 1]) != osm.node_maxspeed.get(node))
+                {
+                    protected[i - 1] = true;
+                    protected[i] = true;
+                }
+            }
+            if options.junction_spacing > 0. {
+                for reverse in [false, true] {
+                    let end = if reverse { route.len() - 1 } else { 0 };
+                    if !rd.junction_nodes.contains(&route[end]) {
+                        continue;
+                    }
+                    let origin = projection.ground(coords[end]);
+                    let indices: Vec<_> = if reverse {
+                        (1..route.len() - 1).rev().collect()
+                    } else {
+                        (1..route.len() - 1).collect()
+                    };
+                    for i in indices {
+                        let point = projection.ground(coords[i]);
+                        if (point.0 - origin.0).hypot(point.1 - origin.1)
+                            >= options.junction_spacing
+                        {
+                            protected[i] = true;
+                            break;
+                        }
                     }
                 }
             }
-
-            // Keep control point near junction endpoints
-            keep_near_junction_endpoints(
-                route,
-                coords,
-                &rd.junction_nodes,
-                &mut keep,
-                options.junction_spacing,
-            );
-
-            // Enforce max spacing
-            enforce_max_spacing(coords, &mut keep, options.max_spacing);
-
-            // Spline-first simplification
-            spline_simplify(coords, &mut keep, options, cancel)?;
-
-            Ok(coords
-                .iter()
-                .enumerate()
-                .filter(|(i, _)| keep[*i])
-                .map(|(i, &(x, y))| (i, x, y))
-                .collect())
+            crate::reduction::reduce(coords, &protected, projection, options, cancel)
         })
         .collect()
-}
-
-fn keep_near_junction_endpoints(
-    route: &[u64],
-    coords: &[(f64, f64)],
-    junction_nodes: &HashSet<u64>,
-    keep: &mut [bool],
-    junction_spacing: f64,
-) {
-    let start_is_junction = junction_nodes.contains(&route[0]);
-    let end_is_junction = junction_nodes.contains(route.last().expect("non-empty route"));
-
-    if start_is_junction && coords.len() > 2 {
-        for i in 1..coords.len() - 1 {
-            let dx = coords[i].0 - coords[0].0;
-            let dy = coords[i].1 - coords[0].1;
-            if dx * dx + dy * dy >= junction_spacing * junction_spacing {
-                keep[i] = true;
-                break;
-            }
-        }
-    }
-    if end_is_junction && coords.len() > 2 {
-        let last = coords.len() - 1;
-        for i in (1..last).rev() {
-            let dx = coords[i].0 - coords[last].0;
-            let dy = coords[i].1 - coords[last].1;
-            if dx * dx + dy * dy >= junction_spacing * junction_spacing {
-                keep[i] = true;
-                break;
-            }
-        }
-    }
-}
-
-fn enforce_max_spacing(coords: &[(f64, f64)], keep: &mut [bool], max_spacing: f64) {
-    let mut last_kept = 0;
-    for i in 1..coords.len() {
-        if keep[i] {
-            last_kept = i;
-            continue;
-        }
-        let dx = coords[i].0 - coords[last_kept].0;
-        let dy = coords[i].1 - coords[last_kept].1;
-        if dx * dx + dy * dy >= max_spacing * max_spacing {
-            keep[i] = true;
-            last_kept = i;
-        }
-    }
-}
-
-fn spline_simplify(
-    coords: &[(f64, f64)],
-    keep: &mut [bool],
-    options: &ExportOptions,
-    cancel: &Cancellation,
-) -> Result<()> {
-    let suppress = constant_radius_points(coords, keep, options);
-    for _ in 0..20 {
-        cancel.check()?;
-        let kept_pts: Vec<(f64, f64)> = (0..coords.len())
-            .filter(|&i| keep[i])
-            .map(|i| coords[i])
-            .collect();
-        let kept_idx: Vec<usize> = (0..coords.len()).filter(|&i| keep[i]).collect();
-
-        if kept_pts.len() < 2 {
-            break;
-        }
-        let segs = hobby::hobby_spline(&kept_pts);
-        let mut added = false;
-
-        for (si, seg) in segs.iter().enumerate() {
-            let orig_start = kept_idx[si];
-            let orig_end = kept_idx[si + 1];
-            if orig_end - orig_start <= 1 {
-                continue;
-            }
-
-            let mut worst_dev = 0.0f64;
-            let mut worst_orig = orig_start;
-            for (oi, &(ox, oy)) in coords
-                .iter()
-                .enumerate()
-                .take(orig_end)
-                .skip(orig_start + 1)
-            {
-                let mut best_d = f64::MAX;
-                for s in 0..=128 {
-                    let pt = hobby::bezier_point(seg, f64::from(s) / 128.0);
-                    let d = ((ox - pt.0).powi(2) + (oy - pt.1).powi(2)).sqrt();
-                    if d < best_d {
-                        best_d = d;
-                    }
-                }
-                if best_d > worst_dev {
-                    worst_dev = best_d;
-                    worst_orig = oi;
-                }
-            }
-
-            if worst_dev > options.spline_tolerance && !suppress[worst_orig] {
-                keep[worst_orig] = true;
-                added = true;
-            }
-        }
-
-        if !added {
-            break;
-        }
-    }
-    Ok(())
-}
-
-fn constant_radius_points(
-    coords: &[(f64, f64)],
-    keep: &mut [bool],
-    options: &ExportOptions,
-) -> Vec<bool> {
-    let mut suppress = vec![false; coords.len()];
-    if !options.enable_curve_r_merging {
-        return suppress;
-    }
-    let mut previous: Option<(usize, f64, f64)> = None;
-    let mut run_start = 1;
-    for i in 1..coords.len().saturating_sub(1) {
-        let (a, b, c) = (coords[i - 1], coords[i], coords[i + 1]);
-        let cross = (b.0 - a.0) * (c.1 - b.1) - (b.1 - a.1) * (c.0 - b.0);
-        let radius = ((b.0 - a.0).hypot(b.1 - a.1)
-            * (c.0 - b.0).hypot(c.1 - b.1)
-            * (c.0 - a.0).hypot(c.1 - a.1))
-            / (2. * cross.abs());
-        if !radius.is_finite() || radius > 10000. || radius <= 0. {
-            previous = None;
-            run_start = i + 1;
-            continue;
-        }
-        if let Some((j, r, d)) = previous
-            && cross.signum() == d
-            && (radius - r).abs() / r <= (options.curve_r_tolerance / 100.).max(0.001)
-        {
-            if !keep[j] {
-                suppress[j] = true;
-            }
-            if !keep[i] {
-                suppress[i] = true;
-            }
-            // A curved run needs an interior control point; endpoints alone
-            // would turn an entire circular arc into a straight segment.
-            let middle = (run_start + i) / 2;
-            keep[middle] = true;
-            suppress[middle] = false;
-        } else {
-            run_start = i;
-        }
-        previous = Some((i, radius, cross.signum()));
-    }
-    suppress
-}
-
-fn subdivide_long_segments(
-    simplified: Vec<Vec<(usize, f64, f64)>>,
-    route_coords: &[Vec<(f64, f64)>],
-    max_spacing: f64,
-) -> Vec<Vec<(usize, f64, f64)>> {
-    simplified
-        .into_iter()
-        .zip(route_coords.iter())
-        .map(|(simp, coords)| {
-            let mut result = Vec::new();
-            for i in 0..simp.len() {
-                result.push(simp[i]);
-                if i + 1 >= simp.len() {
-                    continue;
-                }
-                let (idx0, x0, y0) = simp[i];
-                let (idx1, x1, y1) = simp[i + 1];
-                let seg_dist = ((x1 - x0).powi(2) + (y1 - y0).powi(2)).sqrt();
-                if seg_dist <= max_spacing {
-                    continue;
-                }
-
-                if idx0 != usize::MAX && idx1 != usize::MAX && idx0 < idx1 {
-                    interpolate_along_polyline(&mut result, coords, idx0, idx1, max_spacing);
-                } else {
-                    // Straight-line fallback for interpolated endpoints
-                    let n = (seg_dist / max_spacing).ceil() as usize;
-                    for j in 1..n {
-                        let t = j as f64 / n as f64;
-                        result.push((usize::MAX, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t));
-                    }
-                }
-            }
-            result
-        })
-        .collect()
-}
-
-fn interpolate_along_polyline(
-    result: &mut Vec<(usize, f64, f64)>,
-    coords: &[(f64, f64)],
-    start: usize,
-    end: usize,
-    max_spacing: f64,
-) {
-    let mut cum_len = vec![0.0f64];
-    for k in start..end {
-        let dx = coords[k + 1].0 - coords[k].0;
-        let dy = coords[k + 1].1 - coords[k].1;
-        cum_len.push(cum_len.last().expect("non-empty cum_len") + (dx * dx + dy * dy).sqrt());
-    }
-    let total_len = *cum_len.last().expect("non-empty cum_len");
-    if total_len < 1.0 {
-        return;
-    }
-
-    let n = (total_len / max_spacing).ceil() as usize;
-    for j in 1..n {
-        let target = total_len * j as f64 / n as f64;
-        let seg = cum_len
-            .partition_point(|&l| l < target)
-            .min(cum_len.len() - 1)
-            .max(1)
-            - 1;
-        let seg_start_len = cum_len[seg];
-        let seg_end_len = cum_len[seg + 1];
-        let local_t = if seg_end_len > seg_start_len {
-            (target - seg_start_len) / (seg_end_len - seg_start_len)
-        } else {
-            0.0
-        };
-        let oi = start + seg;
-        let px = coords[oi].0 + (coords[oi + 1].0 - coords[oi].0) * local_t;
-        let py = coords[oi].1 + (coords[oi + 1].1 - coords[oi].1) * local_t;
-        result.push((usize::MAX, px, py));
-    }
 }
 
 fn build_track_nodes(
@@ -1230,9 +992,9 @@ fn serialize_to_nrclip(
     track_kinds: Vec<(i32, TrackKind)>,
     mod_metas: Vec<ModMeta>,
     options: &ExportOptions,
+    center: (f64, f64),
 ) -> Result<Vec<u8>> {
-    let cx = track_nodes.iter().map(|t| t.x).sum::<f64>() / track_nodes.len() as f64;
-    let cy = track_nodes.iter().map(|t| t.y).sum::<f64>() / track_nodes.len() as f64;
+    let (cx, cy) = center;
     let center_lat = merc_y_to_lat_rad(cy);
     let center_lon = cx / EARTH_RADIUS;
     for t in &mut track_nodes {
@@ -1276,3 +1038,138 @@ fn serialize_to_nrclip(
 // ══════════════════════════════════════════════════════════════════════
 // Geometry helpers
 // ══════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod conversion_tests {
+    use super::*;
+    use crate::geometry::{Feature, Geometry};
+    use serde_json::json;
+
+    fn feature(id: &str, coordinates: Vec<Vec<f64>>, properties: serde_json::Value) -> Feature {
+        Feature {
+            kind: "Feature".into(),
+            id: id.into(),
+            geometry: Geometry::LineString { coordinates },
+            properties: properties.as_object().unwrap().clone(),
+        }
+    }
+    fn convert_features(features: &[Feature], options: ExportOptions) -> NrclipFile {
+        let cancel = Cancellation::default();
+        let json = crate::export::overpass(features, &cancel).unwrap();
+        NrclipFile::from_bytes(&convert(&json, &options, &cancel).unwrap()).unwrap()
+    }
+    #[test]
+    fn structure_and_n05_tags_survive_the_complete_output_pipeline() {
+        for layer in ["", "invalid"] {
+            let file = convert_features(
+                &[feature(
+                    "a",
+                    vec![vec![139., 35.], vec![139.002, 35.]],
+                    json!({"bridge":true,"layer":layer,"name":"","N05_002":"東北新幹線"}),
+                )],
+                ExportOptions::default(),
+            );
+            let tracks = &file.collections[0].clips[0].tracks;
+            assert!(
+                tracks
+                    .iter()
+                    .all(|track| track.layer == 1 && track.track_type == 1)
+            );
+        }
+        let file = convert_features(
+            &[feature(
+                "numeric",
+                vec![vec![139., 35.], vec![139.002, 35.]],
+                json!({"layer": 1.0, "tunnel": "yes"}),
+            )],
+            ExportOptions::default(),
+        );
+        assert!(
+            file.collections[0].clips[0]
+                .tracks
+                .iter()
+                .all(|track| track.layer == 1)
+        );
+    }
+    #[test]
+    fn zero_junction_spacing_does_not_force_extra_nodes_and_attachment_is_preserved() {
+        let features = [
+            feature(
+                "main",
+                vec![vec![139., 35.], vec![139.001, 35.], vec![139.002, 35.]],
+                json!({}),
+            ),
+            feature(
+                "branch",
+                vec![
+                    vec![139.001, 35.],
+                    vec![139.001, 35.001],
+                    vec![139.001, 35.002],
+                ],
+                json!({}),
+            ),
+        ];
+        let file = convert_features(
+            &features,
+            ExportOptions {
+                junction_spacing: 0.,
+                tangent_mode: true,
+                ..Default::default()
+            },
+        );
+        let tracks = &file.collections[0].clips[0].tracks;
+        assert_eq!(tracks.len(), 5);
+        let branch = tracks
+            .iter()
+            .find(|track| track.attached_to_id != 0)
+            .unwrap();
+        assert_eq!(branch.tangential, Some(0));
+        assert!(
+            tracks
+                .iter()
+                .any(|track| track.node_id == branch.attached_to_id
+                    && track.attached_by.contains(&branch.node_id))
+        );
+    }
+    #[test]
+    fn closed_routes_have_no_dangling_links_and_scale_and_speed_are_kept() {
+        let feature = feature(
+            "loop",
+            vec![
+                vec![139., 35.],
+                vec![139.001, 35.],
+                vec![139.001, 35.001],
+                vec![139., 35.001],
+                vec![139., 35.],
+            ],
+            json!({"railway":"tram","maxspeed":"72"}),
+        );
+        let file = convert_features(std::slice::from_ref(&feature), ExportOptions::default());
+        let scaled = convert_features(
+            &[feature],
+            ExportOptions {
+                scale_x: 2.,
+                scale_y: 3.,
+                ..Default::default()
+            },
+        );
+        let a = &file.collections[0].clips[0].tracks;
+        let b = &scaled.collections[0].clips[0].tracks;
+        assert_eq!(a.len(), b.len());
+        for (before, after) in a.iter().zip(b) {
+            assert!(a.iter().any(|node| node.node_id == before.next_node));
+            assert!(a.iter().any(|node| node.node_id == before.prev_node));
+            assert_eq!(before.track_type, 2);
+            assert_eq!(before.user_max_speed, Some(20.));
+            assert!(
+                (before.x * 2. - after.x).abs() < 1e-6 && (before.y * 3. - after.y).abs() < 1e-6
+            );
+        }
+    }
+    #[test]
+    fn final_node_limit_includes_the_actual_count() {
+        assert!(validate_node_count(50_000).is_ok());
+        let message = validate_node_count(50_001).unwrap_err().to_string();
+        assert!(message.contains("50001") && message.contains("50000"));
+    }
+}

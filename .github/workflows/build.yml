@@ -60,6 +60,7 @@ jobs:
           npm test
           npm run format:check
           npm run build
+          npm run build:test
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.95.0'
@@ -91,6 +92,11 @@ jobs:
           if len(wheels) != 1:
               raise RuntimeError(f"Expected exactly one built wheel, found {wheels}")
           subprocess.run([sys.executable, "-m", "pip", "install", "--no-deps", "--force-reinstall", str(wheels[0])], check=True)
+      - name: Test browser operations and Qt integration
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QTWEBENGINE_CHROMIUM_FLAGS: --disable-gpu --no-sandbox
+        run: python -m pytest tests -q
       - name: Verify installed application version
         env:
           EXPECTED_VERSION: ${{ steps.version.outputs.version }}

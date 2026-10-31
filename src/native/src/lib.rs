@@ -7,6 +7,7 @@ mod hobby;
 mod import;
 mod nrc1;
 mod platform;
+mod reduction;
 mod tiles;
 mod types;
 mod wire;

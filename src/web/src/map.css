@@ -46,6 +46,14 @@ body,
   border: 2px solid #1971c2;
   border-radius: 50%;
 }
+.draft-vertex {
+  border-color: #d6336c;
+  cursor: grab;
+}
+.history-label {
+  border-color: #d69e00;
+  color: #6b4f00;
+}
 .bbox-handle {
   background: #fff;
   border: 2px solid #f08c00;

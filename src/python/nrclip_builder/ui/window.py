@@ -4,13 +4,13 @@ import json
 import re
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QTimer, Qt, QItemSelectionModel
 from PySide6.QtGui import QAction, QKeySequence, QShortcut, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
     QFileDialog, QFormLayout, QHBoxLayout, QInputDialog, QLabel,
     QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMenu, QMessageBox,
-    QPushButton, QScrollArea, QSlider, QSplitter, QTabWidget, QTableView, QToolBar, QVBoxLayout, QWidget,
+    QPushButton, QScrollArea, QSlider, QSplitter, QTabWidget, QTableView, QToolBar, QToolButton, QVBoxLayout, QWidget,
 )
 
 from .. import __version__, _native
@@ -33,6 +33,7 @@ class MainWindow(QMainWindow):
         self.refreshing = False
         self.closing = False
         self.close_allowed = False
+        self.history_signature = None
         available = self.screen().availableGeometry()
         self.resize(min(1280, int(available.width() * .9)), min(820, int(available.height() * .9)))
         self.setWindowTitle(f"NRClipBuilder {__version__}")
@@ -79,6 +80,21 @@ class MainWindow(QMainWindow):
         form.addRow(label, widget)
         return widget
 
+    def icon_button(self, layout, key, callback, asset, default=None):
+        button = QToolButton()
+        button.setObjectName(key)
+        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        button.setAutoRaise(True)
+        button.setFixedSize(32, 32)
+        button.setIcon(icon(asset))
+        button.setIconSize(ICON_SIZE)
+        for setter in (button.setToolTip, button.setAccessibleName):
+            self.bindings.append((setter, key, default))
+            setter(self.locale.text(key, default))
+        button.clicked.connect(lambda: self.call(callback))
+        layout.addWidget(button)
+        return button
+
     def build_ui(self):
         splitter = QSplitter()
         self.setCentralWidget(splitter)
@@ -104,9 +120,9 @@ class MainWindow(QMainWindow):
         self.history_table = QTableView()
         self.history_table.setModel(self.history_model)
         self.history_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.history_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.history_table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.history_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.history_table.clicked.connect(self.select_history)
+        self.history_table.selectionModel().currentRowChanged.connect(lambda current, previous: self.select_history(current) if current.isValid() else None)
         history = QWidget()
         layout = QVBoxLayout(history)
         layout.addWidget(self.history_table)
@@ -125,18 +141,24 @@ class MainWindow(QMainWindow):
         self.layer_list.currentItemChanged.connect(self.layer_selected)
         self.layer_list.model().rowsMoved.connect(self.layers_moved)
         layout.addWidget(self.layer_list)
-        row = QHBoxLayout()
-        self.button(row, "add_line_btn", self.open_data)
-        self.button(row, "new_layer", self.new_layer, "New Layer")
-        layout.addLayout(row)
-        row = QHBoxLayout()
-        self.button(row, "add_map_btn", self.add_map)
-        self.button(row, "registered_data", self.registered_data, "Recent Files")
-        layout.addLayout(row)
-        row = QHBoxLayout()
-        self.button(row, "rename_layer", self.rename_layer, "Rename")
-        self.button(row, "remove_layer_btn", self.remove_layer)
-        layout.addLayout(row)
+        actions = QWidget()
+        actions.setObjectName("layerActions")
+        row = QHBoxLayout(actions)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(4)
+        for key, callback, asset, default in (
+            ("add_line_btn", self.open_data, "folder-open-line", None),
+            ("new_layer", self.new_layer, "layer-add", "New Layer"),
+            ("add_map_btn", self.add_map, "map-plus", None),
+            ("registered_maps", self.registered_maps, "map-bookmark", "Registered Maps"),
+            ("registered_data", self.registered_data, "folder-recent", "Recent Files"),
+            ("rename_layer", self.rename_layer, "rename", "Rename"),
+            ("remove_layer_btn", self.remove_layer, "trash-2", None),
+        ):
+            if row.count():
+                row.addStretch()
+            self.icon_button(row, key, callback, asset, default)
+        layout.addWidget(actions)
         form = QFormLayout()
         self.opacity = QSlider(Qt.Orientation.Horizontal)
         self.opacity.setRange(0, 100)
@@ -211,7 +233,7 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self.cancel_action)
         self.cancel_action.setEnabled(False)
         self.undo_shortcut = QShortcut(QKeySequence.StandardKey.Undo, self)
-        self.undo_shortcut.activated.connect(self.service.undo_edit)
+        self.undo_shortcut.activated.connect(lambda: self.call(self.service.undo_edit))
         self.next_structure_shortcut = QShortcut(QKeySequence("E"), self)
         self.next_structure_shortcut.activated.connect(lambda: self.structure.step(1))
         self.prev_structure_shortcut = QShortcut(QKeySequence("Q"), self)
@@ -234,11 +256,13 @@ class MainWindow(QMainWindow):
             self.error(str(exc))
 
     def error(self, message):
-        self.statusBar().showMessage(message)
+        self.statusBar().showMessage(self.locale.text("operation_failed"))
         if self.closing:
             self.closing = False
             self.setEnabled(True)
-        QMessageBox.critical(self, self.locale.text("dialog_error"), str(message))
+        box = QMessageBox(QMessageBox.Icon.Critical, self.locale.text("dialog_error"), self.locale.text("operation_failed"), parent=self)
+        box.setDetailedText(str(message))
+        box.exec()
 
     def busy_changed(self, busy):
         self.cancel_action.setEnabled(busy)
@@ -253,6 +277,7 @@ class MainWindow(QMainWindow):
         self.service.touch(False)
 
     def retranslate(self):
+        self.service.strings = self.locale.strings
         for setter, key, default in self.bindings:
             setter(self.locale.text(key, default))
         for index, key in enumerate(("left_tab_layers", "left_tab_filter")):
@@ -310,14 +335,26 @@ class MainWindow(QMainWindow):
         for index, edit in enumerate(self.bbox_edits):
             if not edit.hasFocus():
                 edit.setText(f"{state.bbox[index]:.7f}" if state.bbox else "")
-        self.history_model.clear()
-        self.history_model.setHorizontalHeaderLabels(self.locale.text("history_headers"))
-        for history in state.history:
-            items = [QStandardItem(str(value)) for value in [history["name"], *history["bbox"], history["timestamp"]]]
-            items[0].setData(history["id"], Qt.ItemDataRole.UserRole)
-            self.history_model.appendRow(items)
+        headers = self.locale.text("history_headers")
+        signature = (tuple(headers), tuple((item["id"], item["name"], *item["bbox"], item["timestamp"]) for item in state.history))
+        if signature != self.history_signature:
+            selected_history_ids = {self.history_model.item(index.row(), 0).data(Qt.ItemDataRole.UserRole) for index in self.history_table.selectionModel().selectedRows()}
+            self.history_signature = signature
+            self.history_model.clear()
+            self.history_model.setHorizontalHeaderLabels(headers)
+            for history in state.history:
+                items = [QStandardItem(str(value)) for value in [history["name"], *history["bbox"], history["timestamp"]]]
+                items[0].setData(history["id"], Qt.ItemDataRole.UserRole)
+                self.history_model.appendRow(items)
+                index = self.history_model.index(self.history_model.rowCount()-1, 0)
+                if history["id"] in selected_history_ids:
+                    self.history_table.selectionModel().select(index, QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
+        for row, history in enumerate(state.history):
             if history["id"] == state.selected_history:
-                self.history_table.setCurrentIndex(self.history_model.index(self.history_model.rowCount()-1, 0))
+                index = self.history_model.index(row, 0)
+                self.history_table.selectionModel().setCurrentIndex(index, QItemSelectionModel.SelectionFlag.NoUpdate)
+                if not self.history_table.selectionModel().hasSelection():
+                    self.history_table.selectionModel().select(index, QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
         self.refreshing = False
 
     def layer_changed(self, item):
@@ -372,7 +409,8 @@ class MainWindow(QMainWindow):
         self.map.send({"type": "draft", "draft": self.service.state.draft})
         self.table_model.set_selection(self.service.selections.get(self.service.state.selected))
         count = sum(selection.count for selection in self.service.selections.values())
-        self.statusBar().showMessage(f"{count:,} features")
+        total = sum(self.service.engine.capture(layer.id).count for layer in self.service.state.layers if layer.kind == "data")
+        self.statusBar().showMessage(self.locale.text("msg_filtered_count").format(filtered=count, total=total))
 
     def open_data(self):
         paths, _ = QFileDialog.getOpenFileNames(self, self.locale.text("dialog_open_file_title"), self.service.state.last_directory,
@@ -408,8 +446,13 @@ class MainWindow(QMainWindow):
             name, url, attribution = [edit.text().strip() for edit in edits]
             if not name or not url.startswith(("https://", "http://")) or not all(token in url for token in ("{x}", "{y}", "{z}")):
                 raise ValueError(self.locale.text("msg_validation_invalid_url"))
-            self.service.state.layers.append(Layer(name, kind="tile", url=url, attribution=attribution))
-            self.service.touch()
+            self.service.add_map(name, url, attribution)
+
+    def registered_maps(self):
+        menu = QMenu(self)
+        for item in self.service.state.registered_maps:
+            menu.addAction(item["name"], lambda item=item: self.service.add_map(**item))
+        menu.exec(self.cursor().pos())
 
     def rename_layer(self):
         layer = self.service.state.layer(self.service.state.selected)
@@ -425,7 +468,7 @@ class MainWindow(QMainWindow):
             self.service.remove_layer(layer.id)
 
     def select_history(self, index):
-        if self.refreshing:
+        if self.refreshing or not index.isValid():
             return
         history_id = self.history_model.item(index.row(), 0).data(Qt.ItemDataRole.UserRole)
         self.select_history_id(history_id)
@@ -440,17 +483,13 @@ class MainWindow(QMainWindow):
             self.map.send({"type": "fit", "bbox": item["bbox"]})
 
     def delete_history(self):
-        history_id = self.service.state.selected_history
-        if history_id:
-            self.service.state.history = [h for h in self.service.state.history if h["id"] != history_id]
-            self.service.state.selected_history = None
-            self.service.rebuild_history()
+        ids = {self.history_model.item(index.row(), 0).data(Qt.ItemDataRole.UserRole) for index in self.history_table.selectionModel().selectedRows()}
+        if ids:
+            self.service.delete_history(ids)
 
     def clear_history(self):
         if QMessageBox.question(self, self.locale.text("clear_history_btn"), self.locale.text("msg_clear_history_confirm")) == QMessageBox.StandardButton.Yes:
-            self.service.state.history.clear()
-            self.service.state.selected_history = None
-            self.service.rebuild_history()
+            self.service.delete_history({item["id"] for item in self.service.state.history})
 
     def finish_draft(self):
         if not self.service.state.draft.get("segments"):
@@ -483,7 +522,7 @@ class MainWindow(QMainWindow):
             self.export(self.service.state.selected_history)
 
     def preview(self):
-        self.map.open_preview(Path(_native.data_directory()) / "preview.html")
+        self.map.open_preview(Path(_native.data_directory()) / "preview.html", self.service.state.view, self.locale.language, self.locale.strings)
 
     def map_event(self, event):
         def handle():
@@ -498,6 +537,8 @@ class MainWindow(QMainWindow):
                 self.service.touch(False, notify=False)
             elif kind == "finish_draft":
                 self.finish_draft()
+            elif kind == "draw_end":
+                self.draw_action.setChecked(False)
             elif kind == "edit":
                 self.service.edit(event["layer_id"], event["feature"])
             elif kind == "history":

@@ -68,10 +68,15 @@ pub fn overpass(features: &[Feature], cancel: &Cancellation) -> Result<String> {
             .filter(|(k, _)| !k.starts_with('_'))
             .map(|(k, v)| (k.clone(), Value::String(text(v))))
             .collect();
-        tags.entry("railway").or_insert(json!("rail"));
-        if !tags.contains_key("name") {
+        if tags
+            .get("railway")
+            .is_none_or(|v| text(v).trim().is_empty())
+        {
+            tags.insert("railway".into(), json!("rail"));
+        }
+        if tags.get("name").is_none_or(|v| text(v).trim().is_empty()) {
             for key in ["N05_002", "N05_011", "路線名"] {
-                if let Some(v) = props.get(key) {
+                if let Some(v) = props.get(key).filter(|v| !text(v).trim().is_empty()) {
                     tags.insert("name".into(), json!(text(v)));
                     break;
                 }
@@ -80,7 +85,18 @@ pub fn overpass(features: &[Feature], cancel: &Cancellation) -> Result<String> {
         if let Some(v) = props.get("N05_003") {
             tags.entry("operator").or_insert(json!(text(v)));
         }
-        if !tags.contains_key("layer") {
+        let layer = tags
+            .get("layer")
+            .and_then(|v| text(v).trim().parse::<f64>().ok())
+            .filter(|value| {
+                value.is_finite()
+                    && value.fract() == 0.
+                    && *value >= f64::from(i32::MIN)
+                    && *value <= f64::from(i32::MAX)
+            });
+        if let Some(layer) = layer {
+            tags.insert("layer".into(), json!((layer as i32).to_string()));
+        } else {
             let truthy = |key: &str| {
                 props
                     .get(key)
@@ -98,7 +114,9 @@ pub fn overpass(features: &[Feature], cancel: &Cancellation) -> Result<String> {
             );
         }
         if props.get("N05_001").is_some_and(|v| text(v) == "2")
-            || tags.get("name").is_some_and(|v| text(v).contains("新幹線"))
+            || ["name", "N05_002", "N05_011"]
+                .iter()
+                .any(|key| props.get(*key).is_some_and(|v| text(v).contains("新幹線")))
         {
             tags.insert("highspeed".into(), json!("yes"));
         }

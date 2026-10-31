@@ -12,6 +12,14 @@ Linux packages include a Fcitx 4/5 input plugin built against the bundled Qt. Th
 
 Elevation is requested when the pointer stops over the map. A separate map field displays the coordinates and error details for network errors, HTTP failures, five-second timeouts, missing coverage, and invalid responses, including while selecting a BBox.
 
+While drawing, the map displays the distance and gradient (‰) from the last vertex to the rubber band endpoint. Clicking starts the vertex elevation request; pausing the pointer for 600 ms updates the gradient using both endpoint heights. The endpoint follows snapping. The gradient shows “…” while loading and “—” at zero distance.
+
+Click a snapped existing node to extend or connect a line. Drag draft vertices to move them; right-click a vertex to delete it, or the map to remove the last vertex. Right-click an empty draft to leave drawing mode. Hover drawn segments and saved manual segments for endpoint heights, distance and gradient. Feature attributes remain hover tooltips.
+
+NRC1 conversion removes unnecessary control points while checking the reconstructed game curves against the input in ground metres. Junctions, structure boundaries, shape tolerance and maximum spacing remain constraints, including on constant-radius curves. Shape checking precedes scaling. Exports exceeding 50,000 final nodes stop with the actual count; tolerance is never increased automatically to fit the limit.
+
+Exporting the same name and BBox replaces that history entry. History supports multiple selection and deletion clears the active BBox. Custom backgrounds remain available under Registered Maps after removing their display layer. OSM requests allow 180 seconds of server processing and 240 seconds of communication, with cancellation while waiting.
+
 On Linux, the application starts with the default graphics configuration. Only if graphics startup crashes or fails to become ready within 30 seconds does it retry with native EGL (`QT_XCB_GL_INTEGRATION=xcb_egl` and `--use-gl=egl`). If that also fails, the final attempt disables GPU acceleration, equivalent to `QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" ./NRClipBuilder`. Rust controls the retries, and the selected mode is not saved. Normal exits, failures after startup, and unrelated startup errors do not trigger retries. GBM allocation warnings can still appear while the window and map render successfully through EGL.
 
 The instructions below explain how to run, modify and build the application from source.
@@ -55,6 +63,8 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo fmt --all --check
 npm --prefix src/web test
 npm --prefix src/web run format:check
+npm --prefix src/web run build:test
+python -m pytest tests -q
 python -m PyInstaller --noconfirm --clean packaging/nrclip_builder.spec
 ```
 
@@ -80,11 +90,11 @@ The output is PMTiles v3 with gzip-compressed MVT, generated without external co
 
 `packaging/` contains distribution settings, the application launcher, build dependencies, and version preparation/verification scripts.
 
-Python owns Qt presentation, application state/services, GIS import with pyshp/pyproj, and OSM networking. The required PyO3 Rust extension owns datasets, filters, clipping, topology, curves, Overpass/NRC1 export and all OS-specific operations. Long tasks run in workers; Rust computation detaches from Python. Immutable snapshots and shared unchanged features avoid repeated whole-dataset transfers.
+Python owns Qt presentation, application state/services, GIS import with pyshp/pyproj, and OSM networking. The required PyO3 Rust extension owns datasets, filters, clipping, topology, curves, Overpass/NRC1 export and all OS-specific operations. Long tasks run in workers; Rust computation detaches from Python and reattaches for Python standard-library regular expression evaluation. Immutable snapshots and shared unchanged features avoid repeated whole-dataset transfers.
 
 The React/TypeScript map lives in `src/web/src/`, with CSS for presentation, a Leaflet controller and typed Qt WebChannel commands. Its static bundle is generated in `src/python/nrclip_builder/resources/map/` and included in wheels and desktop packages. Edit the sources and rebuild; do not edit generated assets. Node.js is only needed for development and CI.
 
-The map uses Qt WebChannel and incremental updates. The attribute table fetches pages of properties. Regex uses Rust `regex` syntax; unsupported lookarounds and backreferences produce errors. Shapefiles with PRJ are transformed to WGS84; files without PRJ are assumed WGS84. CPG determines DBF encoding; without CPG, UTF-8 and CP932 are tried.
+The map uses Qt WebChannel and incremental updates. The attribute table fetches pages of properties. Regex uses Python standard-library `re`, including lookarounds and backreferences, on original property text. Searches are case-insensitive unless overridden inside the expression. Railway types and property filters apply together to display and export. Shapefiles with PRJ are transformed to WGS84; files without PRJ are assumed WGS84. CPG determines DBF encoding; without CPG, UTF-8, CP932, Shift-JIS and Latin-1 are tried.
 
 Settings, datasets, output history and unfinished drawing share one atomic `.userdata/session-v1.json` transaction under the application root: the checkout root during development, or the executable's folder in desktop packages, independent of the working directory. Browser previews also live in `.userdata/`. Rust resolves the location, sets the Windows hidden attribute and replaces files atomically. Failed saves preserve the previous file. Output history is added after a successful export. Previous implementations, settings and recovery formats have no compatibility path; existing user files are neither migrated nor deleted. Invalid new sessions are reported without being overwritten.
 
