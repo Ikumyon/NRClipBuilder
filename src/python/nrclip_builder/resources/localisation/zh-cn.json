@@ -1,4 +1,5 @@
 {
+  "session_saved": "会话已保存到 {path}",
   "export_action": "导出…",
   "export_reexport": "再次导出…",
   "export_dialog_title": "导出",

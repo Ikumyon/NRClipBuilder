@@ -1,4 +1,5 @@
 {
+  "session_saved": "Sesija saglabāta šeit: {path}",
   "export_action": "Eksportēt…",
   "export_reexport": "Eksportēt vēlreiz…",
   "export_dialog_title": "Eksportēt",

@@ -1,4 +1,5 @@
 {
+  "session_saved": "工作階段已儲存到 {path}",
   "export_action": "匯出…",
   "export_reexport": "再次匯出…",
   "export_dialog_title": "匯出",

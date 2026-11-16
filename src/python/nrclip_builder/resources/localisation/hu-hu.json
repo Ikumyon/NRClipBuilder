@@ -1,4 +1,5 @@
 {
+  "session_saved": "A munkamenet mentve ide: {path}",
   "export_action": "Exportálás…",
   "export_reexport": "Újraexportálás…",
   "export_dialog_title": "Exportálás",

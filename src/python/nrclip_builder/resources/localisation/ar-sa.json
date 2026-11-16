@@ -1,4 +1,5 @@
 {
+  "session_saved": "حُفظت الجلسة في {path}",
   "export_action": "تصدير…",
   "export_reexport": "تصدير مرة أخرى…",
   "export_dialog_title": "تصدير",

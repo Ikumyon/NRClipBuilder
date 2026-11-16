@@ -1,4 +1,5 @@
 {
+  "session_saved": "Sesi telah disimpan di {path}",
   "export_action": "Eksport…",
   "export_reexport": "Eksport semula…",
   "export_dialog_title": "Eksport",

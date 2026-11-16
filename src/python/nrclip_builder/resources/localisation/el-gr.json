@@ -1,4 +1,5 @@
 {
+  "session_saved": "Η συνεδρία αποθηκεύτηκε στο {path}",
   "export_action": "Εξαγωγή…",
   "export_reexport": "Επανάληψη εξαγωγής…",
   "export_dialog_title": "Εξαγωγή",

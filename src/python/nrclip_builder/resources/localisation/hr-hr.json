@@ -1,4 +1,5 @@
 {
+  "session_saved": "Sesija je spremljena u {path}",
   "export_action": "Izvezi…",
   "export_reexport": "Ponovno izvezi…",
   "export_dialog_title": "Izvezi",

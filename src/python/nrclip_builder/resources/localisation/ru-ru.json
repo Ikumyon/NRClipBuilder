@@ -1,4 +1,5 @@
 {
+  "session_saved": "Сеанс сохранён по пути {path}",
   "export_action": "Экспортировать…",
   "export_reexport": "Экспортировать повторно…",
   "export_dialog_title": "Экспортировать",

@@ -2,6 +2,7 @@
   "registered_maps": "Registered Maps",
   "session_restore_failed": "The session could not be restored.",
   "session_save_failed": "The session could not be saved.",
+  "session_saved": "Session saved to {path}",
   "editable_layer_required": "Select an editable line data layer.",
   "pending_edits": "Wait for pending edits to finish before exporting.",
   "history_selection_required": "Select an output history entry.",

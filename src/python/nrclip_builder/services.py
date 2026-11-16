@@ -110,10 +110,16 @@ class ApplicationService(QObject):
             ]
             self.repository.write(metadata, features, token)
 
+        def done(_):
+            if self.save_pending:
+                self.save_timer.start()
+            else:
+                self.message.emit(self.text("session_saved", path=self.repository.path))
+
         def failed(error):
             self.save_pending = True
             self.failed.emit(f"{self.text('session_save_failed')}\n{error}")
-        self.jobs.submit("save", write, lambda _: self.save_timer.start() if self.save_pending else None, failed)
+        self.jobs.submit("save", write, done, failed)
 
     def add_features(self, name, features, source=None):
         layer = Layer(name=name, source=source)

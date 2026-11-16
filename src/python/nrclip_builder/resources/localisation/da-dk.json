@@ -1,4 +1,5 @@
 {
+  "session_saved": "Sessionen blev gemt i {path}",
   "export_action": "Eksportér…",
   "export_reexport": "Eksportér igen…",
   "export_dialog_title": "Eksportér",

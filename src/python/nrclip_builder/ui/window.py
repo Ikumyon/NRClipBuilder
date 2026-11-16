@@ -34,6 +34,7 @@ class MainWindow(QMainWindow):
         self.closing = False
         self.close_allowed = False
         self.history_signature = None
+        self.processing_message = None
         available = self.screen().availableGeometry()
         self.resize(min(1280, int(available.width() * .9)), min(820, int(available.height() * .9)))
         self.setWindowTitle(f"NRClipBuilder {__version__}")
@@ -266,8 +267,14 @@ class MainWindow(QMainWindow):
 
     def busy_changed(self, busy):
         self.cancel_action.setEnabled(busy)
+        status = self.statusBar()
         if busy:
-            self.statusBar().showMessage(self.locale.text("processing", "Processing…"))
+            self.processing_message = self.locale.text("processing", "Processing…")
+            status.showMessage(self.processing_message)
+        else:
+            if status.currentMessage() == self.processing_message:
+                status.clearMessage()
+            self.processing_message = None
 
     def change_language(self):
         if self.refreshing:

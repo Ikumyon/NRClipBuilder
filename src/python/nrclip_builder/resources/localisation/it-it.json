@@ -1,4 +1,5 @@
 {
+  "session_saved": "La sessione è stata salvata in {path}",
   "export_action": "Esporta…",
   "export_reexport": "Esporta di nuovo…",
   "export_dialog_title": "Esporta",

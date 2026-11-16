@@ -574,15 +574,17 @@ export function createMapController(
       scheduleElevation(event.latlng, 0);
     }
   });
-  map.on("mousemove", (event) => {
+  function updateDrawCursor(event: MouseEvent) {
     if (!drawMode) return;
-    drawCursor = event.latlng;
+    drawCursor = map.mouseEventToLatLng(event);
     renderDrawPreview();
-  });
-  map.on("mouseout", () => {
+  }
+  function clearDrawCursor() {
     drawCursor = null;
     renderDrawPreview();
-  });
+  }
+  container.addEventListener("mousemove", updateDrawCursor, true);
+  container.addEventListener("mouseleave", clearDrawCursor);
   let viewTimer: ReturnType<typeof setTimeout> | undefined;
   map.on("moveend", () => {
     clearTimeout(viewTimer);
@@ -731,6 +733,8 @@ export function createMapController(
     }),
     destroy() {
       disposed = true;
+      container.removeEventListener("mousemove", updateDrawCursor, true);
+      container.removeEventListener("mouseleave", clearDrawCursor);
       clearTimeout(viewTimer);
       clearTimeout(elevationTimer);
       sampler.destroy();

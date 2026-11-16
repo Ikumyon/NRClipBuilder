@@ -2,6 +2,7 @@
   "registered_maps": "登録済み背景地図",
   "session_restore_failed": "セッションを復元できませんでした。",
   "session_save_failed": "セッションを保存できませんでした。",
+  "session_saved": "セッションを保存しました。保存先 {path}",
   "editable_layer_required": "編集可能な線データレイヤーを選択してください。",
   "pending_edits": "編集中の処理が完了してから出力してください。",
   "history_selection_required": "出力履歴を選択してください。",

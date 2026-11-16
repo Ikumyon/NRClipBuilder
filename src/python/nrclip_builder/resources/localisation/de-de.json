@@ -1,4 +1,5 @@
 {
+  "session_saved": "Sitzung wurde unter {path} gespeichert",
   "export_action": "Exportieren…",
   "export_reexport": "Erneut exportieren…",
   "export_dialog_title": "Exportieren",
