@@ -67,7 +67,7 @@ class Jobs(QObject):
 
     def cancel(self):
         for key, (_, token, _, _, _) in self.active.items():
-            if key not in {"save", "startup", "history"}:
+            if key not in {"save", "startup", "history", "restore"}:
                 token.cancel()
 
     def running(self, key):

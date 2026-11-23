@@ -13,7 +13,7 @@ from . import _native
 from .adapters import gis, network
 from .jobs import Jobs
 from .state import HISTORY_ID, Layer, initial_state
-from .storage import SessionRepository
+from .storage import SESSION_FILENAME, SessionRepository
 
 
 @dataclass(frozen=True)
@@ -31,6 +31,9 @@ class ApplicationService(QObject):
     failed = Signal(str)
     message = Signal(str)
     ready = Signal()
+    session_found = Signal(object)
+    session_restored = Signal()
+    restoring_changed = Signal(bool)
 
     def __init__(self, parent=None, repository=None):
         super().__init__(parent)
@@ -42,11 +45,13 @@ class ApplicationService(QObject):
         self.selections = {}
         self.render_cache = {}
         self.undo = []
+        self.redo = []
         self.edits = deque()
         self.edit_busy = False
         self.draft_committing = False
         self.save_pending = False
         self.initialized = False
+        self.restoring = False
         self.strings = {}
         self.save_timer = QTimer(self)
         self.save_timer.setSingleShot(True)
@@ -62,26 +67,117 @@ class ApplicationService(QObject):
 
     def start(self):
         def read(token):
-            loaded = self.repository.read()
-            state = loaded[0] if loaded else self.state
-            datasets = loaded[1] if loaded else {}
-            for layer in state.layers:
-                if layer.kind != "tile":
-                    self.engine.register(layer.id, json.dumps(datasets.get(layer.id, []), ensure_ascii=False), token)
-            return state
+            return self._build_session(self.repository.read() or (initial_state(), {}), token)
 
-        def done(state):
-            self.state = state
-            self.initialized = True
-            self.changed.emit()
+        def done(session):
+            self._install_session(session)
             self.ready.emit()
             self.render()
 
         def failure(error):
-            self.failed.emit(f"{self.text('session_restore_failed')}\n{error}")
+            self._session_error(error)
             # Do not overwrite an unreadable session with a new empty session.
             self.ready.emit()
         self.jobs.submit("startup", read, done, failure)
+
+    @staticmethod
+    def _build_session(session, token):
+        state, datasets = session
+        engine = _native.Engine()
+        for layer in state.layers:
+            if layer.kind != "tile":
+                engine.register(layer.id, json.dumps(datasets.get(layer.id, []), ensure_ascii=False,
+                                                     allow_nan=False), token)
+        return state, engine
+
+    def _install_session(self, session):
+        self.state, self.engine = session
+        self.initialized = True
+        self.selections.clear()
+        self.render_cache.clear()
+        self.undo.clear()
+        self.redo.clear()
+
+    def _session_error(self, error):
+        self.failed.emit(f"{self.text('session_restore_failed')}\n{error}")
+
+    def open_paths(self, paths):
+        paths = [Path(path) for path in paths]
+        if not paths or self.restoring:
+            return
+
+        def inspect(token):
+            inputs = []
+            for path in paths:
+                token.check()
+                suffix = path.suffix.lower()
+                if suffix in {".zip", ".shp"}:
+                    inputs.append((path, None))
+                    continue
+                is_json = suffix in {".json", ".geojson"}
+                try:
+                    payload = self.repository.read_json(path)
+                except (OSError, ValueError) as error:
+                    if path.name.casefold() == SESSION_FILENAME:
+                        return True, error
+                    inputs.append((path, error if is_json else None))
+                    continue
+                if self.repository.is_session(payload):
+                    return True, payload
+                inputs.append((path, payload if is_json else None))
+            return False, inputs
+
+        def done(result):
+            is_session, value = result
+            if is_session:
+                if len(paths) != 1:
+                    self.failed.emit(self.text("session_open_single"))
+                elif isinstance(value, Exception):
+                    self._session_error(value)
+                else:
+                    self.session_found.emit(value)
+                return
+            for path, payload in value:
+                self.load(path, geojson=payload)
+
+        self.jobs.submit("open", inspect, done)
+
+    def restore_session(self, payload):
+        if self.restoring:
+            return
+        self.restoring = True
+        self.restoring_changed.emit(True)
+
+        def resume():
+            self.restoring = False
+            self.restoring_changed.emit(False)
+
+        def done(session):
+            self.save_timer.stop()
+            self.render_timer.stop()
+            self._install_session(session)
+            self.save_pending = True
+            self.session_restored.emit()
+            resume()
+            self.save_timer.start()
+            self.render()
+
+        def failed(error):
+            resume()
+            if self.save_pending:
+                self.save_timer.start()
+            self.render_timer.start()
+            self._session_error(error)
+
+        def begin():
+            # Let existing jobs finish against the current session before replacing it.
+            if self.jobs.inflight or self.edit_busy:
+                QTimer.singleShot(50, begin)
+                return
+            self.jobs.submit("restore", lambda token: self._build_session(self.repository.decode(payload), token),
+                             done, failed)
+
+        begin()
 
     def touch(self, render=True, notify=True):
         if notify:
@@ -93,7 +189,7 @@ class ApplicationService(QObject):
             self.render_timer.start()
 
     def save(self):
-        if not self.initialized:
+        if not self.initialized or self.restoring:
             return
         if self.jobs.running("save") or self.edit_busy:
             self.save_timer.start()
@@ -129,12 +225,14 @@ class ApplicationService(QObject):
             return layer
         self.jobs.submit(f"add:{layer.id}", register, self._added)
 
-    def load(self, path):
+    def load(self, path, *, geojson=None):
         path = Path(path)
         layer = Layer(name=path.name, source=str(path.resolve()))
 
         def read(token):
-            features = gis.load(path, token)
+            if isinstance(geojson, Exception):
+                raise geojson
+            features = gis.load(path, token) if geojson is None else gis.geojson_features(geojson, token)
             self.engine.register(layer.id, json.dumps(features, ensure_ascii=False), token)
             return layer
         self.jobs.submit(f"add:{layer.id}", read, self._added)
@@ -163,7 +261,7 @@ class ApplicationService(QObject):
             self.jobs.submit("osm", fetch, self._added)
 
     def render(self):
-        if not self.initialized:
+        if not self.initialized or self.restoring:
             return
         layers = [Layer(**vars(layer)) for layer in self.state.layers]
         snapshots = {layer.id: self.engine.capture(layer.id) for layer in layers if layer.kind != "tile"}
@@ -211,7 +309,8 @@ class ApplicationService(QObject):
         if not layer or layer.kind == "history":
             return
         self.state.layers.remove(layer)
-        self.undo = [(key, old) for key, old in self.undo if key != layer_id]
+        for history in (self.undo, self.redo):
+            history[:] = [entry for entry in history if entry[0] != layer_id]
         self.edits = deque(edit for edit in self.edits if edit[0] != layer_id)
         if layer.kind != "tile":
             self.engine.remove(layer_id)
@@ -220,18 +319,29 @@ class ApplicationService(QObject):
             self.state.selected = None
         self.touch()
 
-    def edit(self, layer_id, feature, record_undo=True, committed=None):
+    def edit(self, layer_id, feature, committed=None):
         layer = self.state.layer(layer_id)
         if not layer or layer.kind != "data":
             raise ValueError(self.text("editable_layer_required"))
-        self.edits.append((layer_id, [feature] if isinstance(feature, dict) else feature, record_undo, committed))
+
+        def record(old):
+            self.undo.append((layer_id, old))
+            self.redo.clear()
+            if committed:
+                committed()
+
+        self._queue_edit(layer_id, [feature] if isinstance(feature, dict) else feature, record,
+                         draft_commit=committed is not None)
+
+    def _queue_edit(self, layer_id, features, record, *, draft_commit=False):
+        self.edits.append((layer_id, features, record, draft_commit))
         self._next_edit()
 
     def _next_edit(self):
         if self.edit_busy or not self.edits:
             return
         self.edit_busy = True
-        layer_id, features, record_undo, committed = self.edits.popleft()
+        layer_id, features, record, draft_commit = self.edits.popleft()
 
         def update(token):
             return json.loads(self.engine.edit_many(layer_id, json.dumps(features, ensure_ascii=False), token))
@@ -240,12 +350,9 @@ class ApplicationService(QObject):
             layer = self.state.layer(layer_id)
             if layer:
                 layer.revision += 1
-                if record_undo:
-                    self.undo.append((layer_id, old))
-                if committed:
-                    committed()
+                record(old)
                 self.touch()
-            elif committed:
+            elif draft_commit:
                 self.draft_committing = False
                 self.changed.emit()
             self.edit_busy = False
@@ -264,14 +371,21 @@ class ApplicationService(QObject):
         self.jobs.submit("edit", update, finish, failure, lambda: failure("cancelled"))
 
     def undo_edit(self):
-        if self.edit_busy or self.edits:
+        self._apply_edit_history(self.undo, self.redo)
+
+    def redo_edit(self):
+        self._apply_edit_history(self.redo, self.undo)
+
+    def _apply_edit_history(self, source, destination):
+        if self.restoring or self.edit_busy or self.edits or not source:
             return
-        while self.undo:
-            layer_id, feature = self.undo.pop()
-            layer = self.state.layer(layer_id)
-            if layer and layer.kind == "data":
-                self.edit(layer_id, feature, False)
-                break
+        layer_id, features = source[-1]
+
+        def record(old):
+            source.pop()
+            destination.append((layer_id, old))
+
+        self._queue_edit(layer_id, features, record)
 
     def add_map(self, name, url, attribution):
         item = {"name": name, "url": url, "attribution": attribution}

@@ -22,8 +22,11 @@ def normalize_features(features, token):
 
 
 def load_geojson(path: Path, token):
-    data = json.loads(path.read_text(encoding="utf-8-sig"))
-    kind = data.get("type")
+    return geojson_features(json.loads(path.read_text(encoding="utf-8-sig")), token)
+
+
+def geojson_features(data, token):
+    kind = data.get("type") if isinstance(data, dict) else None
     if kind == "FeatureCollection":
         features = data["features"]
     elif kind == "Feature":

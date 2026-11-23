@@ -51,6 +51,9 @@ class MainWindow(QMainWindow):
         self.service.message.connect(lambda text: self.statusBar().showMessage(text, 10000))
         self.service.jobs.busy_changed.connect(self.busy_changed)
         self.service.ready.connect(self.restore_controls)
+        self.service.session_found.connect(self.confirm_session)
+        self.service.session_restored.connect(self.session_restored)
+        self.service.restoring_changed.connect(lambda restoring: self.setEnabled(not restoring))
         self.retranslate()
         self.service.start()
 
@@ -235,6 +238,8 @@ class MainWindow(QMainWindow):
         self.cancel_action.setEnabled(False)
         self.undo_shortcut = QShortcut(QKeySequence.StandardKey.Undo, self)
         self.undo_shortcut.activated.connect(lambda: self.call(self.service.undo_edit))
+        self.redo_shortcut = QShortcut(QKeySequence("Ctrl+Y"), self)
+        self.redo_shortcut.activated.connect(lambda: self.call(self.service.redo_edit))
         self.next_structure_shortcut = QShortcut(QKeySequence("E"), self)
         self.next_structure_shortcut.activated.connect(lambda: self.structure.step(1))
         self.prev_structure_shortcut = QShortcut(QKeySequence("Q"), self)
@@ -261,8 +266,13 @@ class MainWindow(QMainWindow):
         if self.closing:
             self.closing = False
             self.setEnabled(True)
-        box = QMessageBox(QMessageBox.Icon.Critical, self.locale.text("dialog_error"), self.locale.text("operation_failed"), parent=self)
-        box.setDetailedText(str(message))
+        message = str(message)
+        summary, _, details = message.partition("\n")
+        if summary not in {self.locale.text("session_restore_failed"), self.locale.text("session_open_single")}:
+            summary, details = self.locale.text("operation_failed"), message
+        box = QMessageBox(QMessageBox.Icon.Critical, self.locale.text("dialog_error"), summary, parent=self)
+        if details:
+            box.setDetailedText(details)
         box.exec()
 
     def busy_changed(self, busy):
@@ -302,10 +312,12 @@ class MainWindow(QMainWindow):
             for toolbar in self.findChildren(QToolBar):
                 toolbar.setEnabled(False)
             return
+        self.centralWidget().setEnabled(True)
+        for toolbar in self.findChildren(QToolBar):
+            toolbar.setEnabled(True)
         state = self.service.state
         self.refreshing = True
-        if state.language:
-            self.locale.choose(state.language)
+        self.locale.choose(state.language or _native.system_locale())
         self.languages.setCurrentIndex(self.languages.findData(self.locale.language))
         options = state.filter
         for edit, key in ((self.keywords, "keywords"), (self.fields, "fields"), (self.excludes, "excludes")):
@@ -313,9 +325,9 @@ class MainWindow(QMainWindow):
         for check, key in ((self.regex, "regex"), (self.match_all, "match_all"), (self.lines_only, "lines_only")):
             check.setChecked(options.get(key, False))
         self.use_bbox.setChecked(options.get("bbox") is not None)
-        if options.get("railway_types") is not None:
-            for railway, check in self.railways.items():
-                check.setChecked(railway in options["railway_types"])
+        railway_types = options.get("railway_types")
+        for railway, check in self.railways.items():
+            check.setChecked(railway_types is None or railway in railway_types)
         self.refreshing = False
         self.map.send({"type": "view", "view": state.view})
         self.map.send({"type": "draft", "draft": state.draft})
@@ -407,7 +419,7 @@ class MainWindow(QMainWindow):
         self.service.touch(notify=False)
 
     def bbox_edited(self):
-        if not self.refreshing and all(edit.text().strip() for edit in self.bbox_edits):
+        if not self.refreshing and not self.service.restoring and all(edit.text().strip() for edit in self.bbox_edits):
             self.call(lambda: self.service.set_bbox([float(edit.text()) for edit in self.bbox_edits]))
             self.filter_changed()
 
@@ -421,9 +433,28 @@ class MainWindow(QMainWindow):
 
     def open_data(self):
         paths, _ = QFileDialog.getOpenFileNames(self, self.locale.text("dialog_open_file_title"), self.service.state.last_directory,
-                                               "GIS (*.zip *.shp *.geojson *.json);;All files (*)")
-        for path in paths:
-            self.service.load(path)
+                                               self.locale.text("open_file_filter") + " (*.zip *.shp *.geojson *.json);;All files (*)")
+        self.service.open_paths(paths)
+
+    def confirm_session(self, payload):
+        if self.closing:
+            return
+        answer = QMessageBox.question(self, self.locale.text("session_open_title"),
+                                      self.locale.text("session_open_confirm"),
+                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                      QMessageBox.StandardButton.No)
+        if answer == QMessageBox.StandardButton.Yes:
+            self.service.restore_session(payload)
+
+    def session_restored(self):
+        self.draw_action.setChecked(False)
+        self.history_table.clearSelection()
+        for edit in self.bbox_edits:
+            edit.clearFocus()
+        self.table_model.set_selection(None)
+        self.map.geometry_cache.clear()
+        self.map.last_payload = None
+        self.restore_controls()
 
     def new_layer(self):
         name, ok = QInputDialog.getText(self, self.locale.text("new_layer", "New Layer"), self.locale.text("dialog_drawn_line_prompt"))
@@ -433,7 +464,7 @@ class MainWindow(QMainWindow):
     def registered_data(self):
         menu = QMenu(self)
         for path in self.service.state.registered_sources:
-            action = menu.addAction(path, lambda path=path: self.service.load(path))
+            action = menu.addAction(path, lambda path=path: self.service.open_paths([path]))
             action.setIcon(icon("folder-open-line"))
             action.setIconVisibleInMenu(True)
         menu.exec(self.cursor().pos())
@@ -532,6 +563,9 @@ class MainWindow(QMainWindow):
         self.map.open_preview(Path(_native.data_directory()) / "preview.html", self.service.state.view, self.locale.language, self.locale.strings)
 
     def map_event(self, event):
+        if self.service.restoring:
+            return
+
         def handle():
             kind = event["type"]
             if kind == "bbox":
@@ -556,6 +590,9 @@ class MainWindow(QMainWindow):
         self.call(handle)
 
     def closeEvent(self, event):
+        if self.service.restoring:
+            event.ignore()
+            return
         if self.close_allowed or not self.service.initialized:
             event.accept()
             return

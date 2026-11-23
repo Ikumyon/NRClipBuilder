@@ -1,6 +1,10 @@
 {
   "registered_maps": "登録済み背景地図",
   "session_restore_failed": "セッションを復元できませんでした。",
+  "session_open_title": "セッションを開く",
+  "session_open_confirm": "現在の作業を選択したセッションで置き換えますか？",
+  "session_open_single": "セッションファイルを1つだけ選択して開いてください。",
+  "open_file_filter": "地理データとセッション",
   "session_save_failed": "セッションを保存できませんでした。",
   "session_saved": "セッションを保存しました。保存先 {path}",
   "editable_layer_required": "編集可能な線データレイヤーを選択してください。",

@@ -59,7 +59,6 @@ export function createMapController(
   let drawCursor: L.LatLng | null = null,
     drawPreview: L.Polyline | null = null;
   let strings: Strings = {},
-    initializedView = false,
     hint = "";
   let elevation = "";
   let elevationFailure: {
@@ -706,9 +705,9 @@ export function createMapController(
       notify();
       renderDraft();
     }
-    if (message.type === "view" && !initializedView) {
+    if (message.type === "view") {
+      clearTimeout(viewTimer);
       map.setView([message.view.lat, message.view.lng], message.view.zoom);
-      initializedView = true;
     }
   }
 

@@ -1,6 +1,10 @@
 {
   "registered_maps": "Registered Maps",
   "session_restore_failed": "The session could not be restored.",
+  "session_open_title": "Open Session",
+  "session_open_confirm": "Replace the current work with the selected session?",
+  "session_open_single": "Select a single session file to open it.",
+  "open_file_filter": "GIS data and sessions",
   "session_save_failed": "The session could not be saved.",
   "session_saved": "Session saved to {path}",
   "editable_layer_required": "Select an editable line data layer.",

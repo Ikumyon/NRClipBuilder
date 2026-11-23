@@ -52,7 +52,7 @@ def main():
             QTimer.singleShot(1000, startup_ready)
     paths = args.paths
     if paths:
-        window.service.ready.connect(lambda: [window.service.load(path) for path in paths])
+        window.service.ready.connect(lambda: window.service.open_paths(paths))
     window.show()
     result = app.exec()
     window.service.jobs.pool.waitForDone(40000)
